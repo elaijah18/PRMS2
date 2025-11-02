@@ -3,6 +3,7 @@ from rest_framework import serializers
 import re 
 from datetime import date
 from django.contrib.auth.hashers import make_password
+from django.utils import timezone
 
 class PatientSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
@@ -55,6 +56,42 @@ class VitalSignsSerializer(serializers.ModelSerializer):
 
 class QueueEntrySerializer(serializers.ModelSerializer):
     patient = PatientSerializer(read_only=True)
+    latest_vitals = serializers.SerializerMethodField()
+    
     class Meta:
         model = QueueEntry
-        fields = ['id', 'patient', 'priority', 'entered_at', 'queue_number']
+        fields = ['id', 'patient', 'priority', 'entered_at', 'latest_vitals']
+    
+    def get_latest_vitals(self, obj):
+        """Get the latest vital signs for the patient in this queue entry"""
+        from django.db.models import Max
+        
+        # Get today's date range
+        today = timezone.now().date()
+        today_start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time()))
+        today_end = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.max.time()))
+        
+        # Get latest vitals from today
+        latest_vital = VitalSigns.objects.filter(
+            patient=obj.patient,
+            date_time_recorded__range=(today_start, today_end)
+        ).order_by('-date_time_recorded').first()
+        
+        if not latest_vital:
+            return None
+        
+        # Calculate BMI
+        bmi_value = None
+        if latest_vital.height and latest_vital.weight:
+            height_m = latest_vital.height / 100
+            bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
+        
+        return {
+            'heart_rate': latest_vital.heart_rate,
+            'temperature': latest_vital.temperature,
+            'oxygen_saturation': latest_vital.oxygen_saturation,
+            'blood_pressure': latest_vital.blood_pressure,
+            'height': latest_vital.height,
+            'weight': latest_vital.weight,
+            'bmi': bmi_value
+        }

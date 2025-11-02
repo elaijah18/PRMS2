@@ -79,24 +79,26 @@ class Patient(models.Model):
         return self.age is not None and self.age >= 65
 
 class VitalSigns(models.Model):
-    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='vital_signs')  # Link to Patient model
-    device_id = models.CharField(max_length=50, null=True, blank=True)  # Link to the RPi device
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='vital_signs')
+    device_id = models.CharField(max_length=50, null=True, blank=True)
     date_time_recorded = models.DateTimeField(auto_now_add=True)
-    heart_rate = models.IntegerField(null=True, blank=True)  # bpm; Allow null for optional
+    heart_rate = models.IntegerField(null=True, blank=True)  # bpm
     temperature = models.FloatField(null=True, blank=True)  # °C
     oxygen_saturation = models.FloatField(null=True, blank=True)  # %
-    # Optional: Add BP if needed (as per your original query)
     blood_pressure = models.IntegerField(null=True, blank=True)  # mmHg
-    # blood_pressure_diastolic = models.IntegerField(null=True, blank=True)  # mmHg
-    height = models.FloatField(null=True, blank=True)  # meters
+    height = models.FloatField(null=True, blank=True)  # cm (centimeters)
     weight = models.FloatField(null=True, blank=True)  # kg
-    bmi = models.FloatField(null=True, blank=True) 
+    bmi = models.FloatField(null=True, blank=True)
     
-    def save(self, *args, **kwargs):  # Fixed: Override save() to auto-compute BMI
-        # Compute BMI if height and weight are provided
+    def save(self, *args, **kwargs):
+        """Auto-compute BMI if height and weight are provided"""
+        # Compute BMI if height (in cm) and weight (in kg) are provided
         if self.height and self.weight and self.height > 0:
-            self.BMI = round(self.weight / (self.height ** 2), 2)
-        # If no height/weight, leave BMI as None
+            # Convert height from cm to meters
+            height_m = self.height / 100
+            # Calculate BMI: weight (kg) / (height in meters)²
+            self.bmi = round(self.weight / (height_m ** 2), 1)
+        
         super().save(*args, **kwargs)
 
 class QueueEntry(models.Model):

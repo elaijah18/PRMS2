@@ -168,6 +168,29 @@ def receive_vital_signs(request):
 
     vital_signs.date_time_recorded = timezone.now()
     vital_signs.save()
+    
+    all_vitals_complete = all([
+        vital_signs.heart_rate,
+        vital_signs.temperature,
+        vital_signs.oxygen_saturation,
+        vital_signs.weight,
+        vital_signs.height,
+    ])
+    
+    if all_vitals_complete:
+        # Check if patient is already in queue
+        existing_queue = QueueEntry.objects.filter(patient=patient).first()
+        
+        if not existing_queue:
+            # Compute priority based on vitals
+            priority = compute_patient_priority(patient)
+            
+            # Add to queue
+            QueueEntry.objects.create(
+                patient=patient,
+                priority=priority,
+                entered_at=timezone.now()
+            )   
 
     return Response({
         "message": "Vital signs saved successfully",
@@ -196,7 +219,6 @@ def test_rpi_connection(request):
 
 @csrf_exempt
 @api_view(['POST'])
-@api_view(["POST"])
 def login(request):
     pin = request.data.get("pin")
     login_type = request.data.get("login_type")  # 'staff' or 'patient'
@@ -399,6 +421,7 @@ def get_patient_vitals_by_id(request, patient_id): # <-- NEW FUNCTION
         
     except Patient.DoesNotExist:
         return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
+# Remove the DUPLICATE QueueViewSet class and keep only this one:
 
 class QueueViewSet(viewsets.ModelViewSet):
     queryset = QueueEntry.objects.all()
@@ -408,9 +431,7 @@ class QueueViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def current_queue(self, request):
         """Get sorted queue: Prioritize by priority level, then entered_at (earliest first)."""
-        queue = QueueEntry.objects.all().select_related(
-            'patient', 'patient__vital_signs'  # Fixed: correct related_name
-        ).annotate(
+        queue = QueueEntry.objects.all().select_related('patient').annotate(
             priority_order=Case(
                 When(priority='CRITICAL', then=1),
                 When(priority='HIGH', then=2),
@@ -422,7 +443,16 @@ class QueueViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(queue, many=True)
         return Response(serializer.data)
- 
+    
+    @action(detail=True, methods=['post'])
+    def mark_complete(self, request, pk=None):
+        """Mark a queue entry as complete/served"""
+        try:
+            queue_entry = self.get_object()
+            queue_entry.delete()  # Or you can add a 'completed' field instead
+            return Response({"message": "Patient marked as served"}, status=status.HTTP_200_OK)
+        except QueueEntry.DoesNotExist:
+            return Response({"error": "Queue entry not found"}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
 def logout(request):
@@ -483,28 +513,6 @@ def get_all_patients(request):
 
     return Response(data)
 
-class QueueViewSet(viewsets.ModelViewSet):
-    queryset = QueueEntry.objects.all()
-    serializer_class = QueueEntrySerializer
-    permission_classes = [AllowAny]  # Restrict in production
-    
-    @action(detail=False, methods=['get'])
-    def current_queue(self, request):
-        """Get sorted queue: Prioritize by priority level, then entered_at (earliest first)."""
-        queue = QueueEntry.objects.all().select_related(
-            'patient', 'patient__vital_signs'  # Fixed: correct related_name
-        ).annotate(
-            priority_order=Case(
-                When(priority='CRITICAL', then=1),
-                When(priority='HIGH', then=2),
-                When(priority='MEDIUM', then=3),
-                default=4,
-                output_field=IntegerField()
-            )
-        ).order_by('priority_order', 'entered_at')
-        
-        serializer = self.get_serializer(queue, many=True)
-        return Response(serializer.data)
 
 @api_view(['POST'])
 def archive_patient_view(request, patient_id):
