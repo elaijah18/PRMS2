@@ -1,6 +1,4 @@
-// Weight.jsx
-// Page for measuring and displaying weight
-
+// Weight.jsx — revised
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
@@ -12,14 +10,13 @@ export default function Weight() {
   const nav = useNavigate();
   const [value, setValue] = useState(null);
   const [showInit, setShowInit] = useState(false);
-
   const API_BASE = 'http://localhost:8000';
 
   const start = () => {
     setShowInit(true);
     setTimeout(() => {
       setShowInit(false);
-      // mock reading (replace with real sensor)
+      // Mock reading (replace with real sensor data)
       const w = Math.round((48 + Math.random() * 22) * 10) / 10;
       setValue(w);
       sessionStorage.setItem(SESSION_KEYS.weight, String(w));
@@ -29,13 +26,13 @@ export default function Weight() {
 
   const saveWeight = async (weightValue) => {
     try {
-      // Get patient_id from session storage (set during login)
       const patientId = sessionStorage.getItem('patient_id');
-
       if (!patientId) {
         console.warn('No patient_id found in session.');
         return;
       }
+
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
 
       const response = await fetch(`${API_BASE}/receive-vitals/`, {
         method: 'POST',
@@ -44,6 +41,7 @@ export default function Weight() {
         body: JSON.stringify({
           patient_id: patientId,
           weight: weightValue,
+          id: currentVitalId || null,
         }),
       });
 
@@ -51,6 +49,10 @@ export default function Weight() {
 
       if (response.ok) {
         console.log('Weight saved:', result);
+        // Save the record ID so the next vital (height, etc.) updates the same record
+        if (result.data && result.data.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
       } else {
         console.error('Failed to save weight:', result);
       }
@@ -68,7 +70,6 @@ export default function Weight() {
         Step carefully onto the platform. Stand still and wait for your weight to display.
       </p>
 
-      
       {!value && (
         <div className="mt-6 flex justify-center">
           <img
@@ -79,7 +80,6 @@ export default function Weight() {
         </div>
       )}
 
-      {/* Results Section */}
       {!value ? (
         <div className="mt-8 text-center">
           <button

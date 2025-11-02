@@ -41,6 +41,8 @@ export default function Pulse() {
         console.warn('No patient_id found in session.');
         return;
       }
+      
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
 
       const response = await fetch(`${API_BASE}/receive-vitals/`, {
         method: 'POST',
@@ -50,6 +52,7 @@ export default function Pulse() {
           patient_id: patientId,
           heart_rate: hrValue,
           oxygen_saturation: spo2Value, // COMBINE BOTH HERE
+          id: currentVitalId || null,
         }),
       });
 

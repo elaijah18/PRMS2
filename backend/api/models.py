@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, IntegrityError, transaction
 from django.utils import timezone
 from datetime import date
 from .utils import compute_patient_priority
@@ -52,14 +52,18 @@ class Patient(models.Model):
             return today.year - self.birthdate.year - ((today.month, today.day) < (self.birthdate.month, self.birthdate.day))
         return None
 
-    def save(self, *args, **kwargs):  
+    def save(self, *args, **kwargs):
         if not self.patient_id:
             today = timezone.now().date()
             yyyymmdd = today.strftime("%Y%m%d")
-            count_today = Patient.objects.filter(patient_id__startswith=f"P-{yyyymmdd}").count() + 1
-            self.patient_id = f"P-{yyyymmdd}-{count_today:03d}"
-            pass
-        
+
+            # Keep trying until unique ID found
+            for i in range(1, 1000):  # allows up to 999 per day
+                candidate_id = f"P-{yyyymmdd}-{i:03d}"
+                if not Patient.objects.filter(patient_id=candidate_id).exists():
+                    self.patient_id = candidate_id
+                    break
+            
         # Hash the PIN if it's not already hashed
         if self.pin and not self.pin.startswith('pbkdf2_'):
             self.pin = make_password(self.pin)
@@ -67,7 +71,8 @@ class Patient(models.Model):
           # set last_visit on first creation
         if not self.last_visit:
             self.last_visit = timezone.now()
-            super().save(*args, **kwargs)
+
+        super().save(*args, **kwargs)
 
     def is_senior(self):
         """Helper: Check if patient is senior (age >= 65)."""

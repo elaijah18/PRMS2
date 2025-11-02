@@ -1,6 +1,4 @@
-// Height.jsx
-// Page for measuring and displaying height
-
+// Height.jsx — revised
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
@@ -12,9 +10,7 @@ export default function Height() {
   const nav = useNavigate();
   const [value, setValue] = useState(null);
   const [showInit, setShowInit] = useState(false);
-
   const API_BASE = 'http://localhost:8000';
-
 
   const start = () => {
     setShowInit(true);
@@ -29,13 +25,13 @@ export default function Height() {
 
   const saveHeight = async (heightValue) => {
     try {
-      // Get patient_id from session storage (set during login)
       const patientId = sessionStorage.getItem('patient_id');
-
       if (!patientId) {
         console.warn('No patient_id found in session.');
         return;
       }
+
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
 
       const response = await fetch(`${API_BASE}/receive-vitals/`, {
         method: 'POST',
@@ -44,6 +40,7 @@ export default function Height() {
         body: JSON.stringify({
           patient_id: patientId,
           height: heightValue,
+          id: currentVitalId || null,
         }),
       });
 
@@ -51,6 +48,10 @@ export default function Height() {
 
       if (response.ok) {
         console.log('Height saved:', result);
+        // Reuse same vital record ID
+        if (result.data && result.data.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
       } else {
         console.error('Failed to save height:', result);
       }
@@ -77,11 +78,13 @@ export default function Height() {
           />
         </div>
       )}
-      
 
       {!value ? (
         <div className="mt-8 text-center">
-          <button onClick={start} className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70">
+          <button
+            onClick={start}
+            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+          >
             Start
           </button>
         </div>

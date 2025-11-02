@@ -69,6 +69,8 @@ export default function Temperature() {
         return;
       }
 
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
+
       const response = await fetch(`${API_BASE}/receive-vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -77,6 +79,7 @@ export default function Temperature() {
           patient_id: patientId,
           temperature: temperatureValue,
           complete: true,
+          id: currentVitalId || null,
         }),
       });
 

@@ -102,170 +102,86 @@ def update_vitals(request, id):
 @api_view(['POST'])
 def receive_vital_signs(request):
     """
-    FOR RPi - Receives vital signs data from Raspberry Pi
-    Collects partial vitals and creates a new row only when all vitals are complete.
-    Allows multiple complete readings per day.
+    Handles vital sign data (weight, height, heart_rate, etc.)
+    Updates existing record for today if incomplete, or creates new one.
     """
-    
-    try:
-        import pytz
-        philippine_tz = pytz.timezone('Asia/Manila')
-        
-        data = request.data
-        
-        patient_id = data.get('patient_id')
-        if not patient_id:
-            return Response(
-                {"error": "patient_id is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )        
-        try:
-            patient = Patient.objects.get(patient_id=patient_id)
-        except Patient.DoesNotExist:
-            return Response(
-                {
-                    "error": "Patient not found",
-                    "patient_id": patient_id
-                }, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Check if this is a "complete" signal or if all fields are present
-        is_complete = data.get('complete', False)  # Frontend can send complete=true
-        
-        # Check which fields are present
-        required_fields = ['heart_rate', 'temperature', 'oxygen_saturation', 'weight', 'height']
-        all_fields_present = all(data.get(field) is not None for field in required_fields)
-        
-        # Get or create today's incomplete vital signs record
-        today = timezone.now().date()
-        today_start = timezone.datetime.combine(today, timezone.datetime.min.time())
-        today_end = timezone.datetime.combine(today, timezone.datetime.max.time())
-        
-        if timezone.is_naive(today_start):
-            today_start = timezone.make_aware(today_start)
-        if timezone.is_naive(today_end):
-            today_end = timezone.make_aware(today_end)
-        
-        # Look for an incomplete record today (one that's being built up)
-        incomplete_vital = VitalSigns.objects.filter(
-            patient=patient,
-            date_time_recorded__range=(today_start, today_end)
-        ).order_by('-date_time_recorded').first()
-        
-        # Check if the last record is complete
-        if incomplete_vital:
-            last_complete = all([
-                incomplete_vital.heart_rate,
-                incomplete_vital.temperature,
-                incomplete_vital.oxygen_saturation,
-                incomplete_vital.weight,
-                incomplete_vital.height
-            ])
-            if last_complete:
-                incomplete_vital = None  # Don't use it, it's already complete
-        
-        if (is_complete or all_fields_present) and incomplete_vital:
-            # All vitals collected - create NEW complete record with all the data
-            vital_signs = VitalSigns.objects.create(
-                patient=patient,
-                device_id=incomplete_vital.device_id or data.get('device_id'),
-                heart_rate=incomplete_vital.heart_rate or data.get('heart_rate'),
-                temperature=incomplete_vital.temperature or data.get('temperature'),
-                oxygen_saturation=incomplete_vital.oxygen_saturation or data.get('oxygen_saturation'),
-                weight=incomplete_vital.weight or data.get('weight'),
-                height=incomplete_vital.height or data.get('height'),
-            )
-            
-            # Delete the incomplete record
-            incomplete_vital.delete()
-            
-            created = True
-            
-            # UPDATE LAST VISIT (Philippine time)
-            patient.last_visit = timezone.now().astimezone(philippine_tz)
-            patient.save()
-            
-            queue_entry, created_queue = QueueEntry.objects.get_or_create(patient=patient)
-            queue_entry.priority = compute_patient_priority(patient)
-            queue_entry.save()
-            
-            serializer = VitalSignsSerializer(vital_signs)
-            patient_name = f"{patient.first_name} {patient.last_name}".strip()
-            
-            return Response({
-                "success": True,
-                "message": "Complete vital signs recorded successfully",
-                "patient_name": patient_name,
-                "data": serializer.data,
-                "all_complete": True
-            }, status=status.HTTP_201_CREATED)
-        
-        else:
-            # Partial data - update or create incomplete record
-            if incomplete_vital:
-                # Update existing incomplete record
-                if data.get('device_id') is not None:
-                    incomplete_vital.device_id = data.get('device_id')
-                if data.get('heart_rate') is not None:
-                    incomplete_vital.heart_rate = data.get('heart_rate')
-                if data.get('temperature') is not None:
-                    incomplete_vital.temperature = data.get('temperature')
-                if data.get('oxygen_saturation') is not None:
-                    incomplete_vital.oxygen_saturation = data.get('oxygen_saturation')
-                if data.get('weight') is not None:
-                    incomplete_vital.weight = data.get('weight')
-                if data.get('height') is not None:
-                    incomplete_vital.height = data.get('height')
-                
-                incomplete_vital.save()
-                vital_signs = incomplete_vital
-                created = False
-            else:
-                # Create new incomplete record
-                vital_signs = VitalSigns.objects.create(
-                    patient=patient,
-                    device_id=data.get('device_id'),
-                    heart_rate=data.get('heart_rate'),
-                    temperature=data.get('temperature'),
-                    oxygen_saturation=data.get('oxygen_saturation'),
-                    weight=data.get('weight'),
-                    height=data.get('height'),
-                )
-                created = True
-            
-            # Check what's still missing
-            missing_fields = []
-            if not vital_signs.heart_rate:
-                missing_fields.append('heart_rate')
-            if not vital_signs.temperature:
-                missing_fields.append('temperature')
-            if not vital_signs.oxygen_saturation:
-                missing_fields.append('oxygen_saturation')
-            if not vital_signs.weight:
-                missing_fields.append('weight')
-            if not vital_signs.height:
-                missing_fields.append('height')
-            
-            serializer = VitalSignsSerializer(vital_signs)
-            
-            return Response({
-                "success": True,
-                "message": "Partial vital signs saved",
-                "data": serializer.data,
-                "missing_fields": missing_fields,
-                "all_complete": False
-            }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        print(f"Error receiving vitals: {str(e)}")  # For debugging
-        import traceback
-        traceback.print_exc()  # Print full stack trace
-        return Response({
-            "error": "Server error",
-            "details": str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    data = request.data
+    patient_id = data.get('patient_id')
 
+    if not patient_id:
+        return Response({"error": "Missing patient_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        patient = Patient.objects.get(patient_id=patient_id)
+    except Patient.DoesNotExist:
+        return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Try to find an existing record by ID (sent by frontend)
+    vital_id = data.get('id')
+    vital_signs = None
+
+    if vital_id:
+        try:
+            vital_signs = VitalSigns.objects.get(id=vital_id, patient=patient)
+        except VitalSigns.DoesNotExist:
+            vital_signs = None
+
+    # If no ID given, find today's incomplete record
+    if not vital_signs:
+        today = timezone.now().date()
+        today_start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time()))
+        today_end = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.max.time()))
+
+        vital_signs = (
+            VitalSigns.objects.filter(
+                patient=patient,
+                date_time_recorded__range=(today_start, today_end)
+            )
+            .order_by('-date_time_recorded')
+            .first()
+        )
+
+        # If we found one but it's already complete, reset so we can create a new one
+        if vital_signs:
+            all_filled = all([
+                vital_signs.weight,
+                vital_signs.height,
+                vital_signs.heart_rate,
+                vital_signs.temperature,
+                vital_signs.oxygen_saturation,
+            ])
+            if all_filled:
+                vital_signs = None
+
+    # If still none, create a fresh record
+    if not vital_signs:
+        vital_signs = VitalSigns.objects.create(
+            patient=patient,
+            date_time_recorded=timezone.now()
+        )
+
+    # --- Update only the provided fields ---
+    for field in ['heart_rate', 'temperature', 'oxygen_saturation', 'weight', 'height']:
+        if field in data and data[field] is not None:
+            setattr(vital_signs, field, data[field])
+
+    vital_signs.date_time_recorded = timezone.now()
+    vital_signs.save()
+
+    return Response({
+        "message": "Vital signs saved successfully",
+        "data": {
+            "id": vital_signs.id,
+            "patient_id": patient.patient_id,
+            "heart_rate": vital_signs.heart_rate,
+            "temperature": vital_signs.temperature,
+            "oxygen_saturation": vital_signs.oxygen_saturation,
+            "weight": vital_signs.weight,
+            "height": vital_signs.height,
+            "timestamp": vital_signs.date_time_recorded,
+        },
+    }, status=status.HTTP_200_OK)
+    
 @api_view(['GET'])
 def test_rpi_connection(request):
     """
@@ -313,21 +229,24 @@ def login(request):
             return Response({"error": "Username required for patient login"}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            patient = Patient.objects.get(username=username.strip(), pin=pin)
+            patient = Patient.objects.get(username=username.strip())
             
-            request.session['user_type'] = 'patient'
-            request.session['patient_id'] = patient.patient_id
-            
-            return Response({
-                "role": "patient",
-                "patient_id": patient.patient_id,  # Just the ID, not full data
-                "name": f"{patient.first_name} {patient.last_name}"
-            })
-            
+            # Use the built-in check_pin() method (which calls Django's check_password)
+            if patient.check_pin(pin):
+                request.session['user_type'] = 'patient'
+                request.session['patient_id'] = patient.patient_id
+
+                return Response({
+                    "role": "patient",
+                    "patient_id": patient.patient_id,
+                    "name": f"{patient.first_name} {patient.last_name}"
+                })
+            else:
+                return Response({"error": "Invalid PIN"}, status=status.HTTP_401_UNAUTHORIZED)
+        
         except Patient.DoesNotExist:
-            return Response({"error": "Invalid username or PIN"}, status=status.HTTP_401_UNAUTHORIZED)
-    
-    return Response({"error": "Invalid login type"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Invalid username"}, status=status.HTTP_401_UNAUTHORIZED)
+
 
 @api_view(['GET'])
 def get_patient_profile(request):
