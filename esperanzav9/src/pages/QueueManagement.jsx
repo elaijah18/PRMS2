@@ -305,10 +305,10 @@ export default function QueueManagement() {
                       <td className="px-4 py-3 font-semibold tabular-nums text-center">
                         {r.number}
                         {r.priority === 'CRITICAL' && (
-                          <span className="ml-1 text-red-600 font-bold">⚠ </span>
+                          <span className="ml-1 text-red-600 font-bold"></span>
                         )}
                         {r.priority === 'HIGH' && (
-                          <span className="ml-1 text-orange-600 font-bold">!</span>
+                          <span className="ml-1 text-orange-600 font-bold"></span>
                         )}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{r.patientId}</td>
