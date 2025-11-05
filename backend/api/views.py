@@ -150,6 +150,8 @@ def receive_vital_signs(request):
                 vital_signs.heart_rate,
                 vital_signs.temperature,
                 vital_signs.oxygen_saturation,
+                vital_signs.blood_pressure,
+                
             ])
             if all_filled:
                 vital_signs = None
@@ -162,7 +164,7 @@ def receive_vital_signs(request):
         )
 
     # --- Update only the provided fields ---
-    for field in ['heart_rate', 'temperature', 'oxygen_saturation', 'weight', 'height']:
+    for field in ['heart_rate', 'temperature', 'oxygen_saturation', 'weight', 'height', 'blood_pressure']:
         if field in data and data[field] is not None:
             setattr(vital_signs, field, data[field])
 
@@ -170,6 +172,7 @@ def receive_vital_signs(request):
     vital_signs.save()
     
     all_vitals_complete = all([
+        vital_signs.blood_pressure,
         vital_signs.heart_rate,
         vital_signs.temperature,
         vital_signs.oxygen_saturation,
@@ -202,6 +205,7 @@ def receive_vital_signs(request):
             "oxygen_saturation": vital_signs.oxygen_saturation,
             "weight": vital_signs.weight,
             "height": vital_signs.height,
+            "blood_pressure": vital_signs.blood_pressure,
             "timestamp": vital_signs.date_time_recorded,
         },
     }, status=status.HTTP_200_OK)

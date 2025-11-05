@@ -85,7 +85,7 @@ class VitalSigns(models.Model):
     heart_rate = models.IntegerField(null=True, blank=True)  # bpm
     temperature = models.FloatField(null=True, blank=True)  # °C
     oxygen_saturation = models.FloatField(null=True, blank=True)  # %
-    blood_pressure = models.IntegerField(null=True, blank=True)  # mmHg
+    blood_pressure = models.CharField(null=True, blank=True, max_length=7)  # mmHg
     height = models.FloatField(null=True, blank=True)  # cm (centimeters)
     weight = models.FloatField(null=True, blank=True)  # kg
     bmi = models.FloatField(null=True, blank=True)

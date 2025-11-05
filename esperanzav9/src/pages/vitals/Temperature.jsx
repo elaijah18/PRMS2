@@ -42,8 +42,10 @@ export default function Temperature() {
         const tempValue = roundedData[0].temperature;
         setTemp(tempValue);
         sessionStorage.setItem('temperature', String(tempValue));
+        sessionStorage.setItem('step_temp', String(tempValue));
+        sessionStorage.setItem('step_temp_ts', String(Date.now()));
 
-        // Optionally simulate saving to backend
+        // Save to backend (without complete flag)
         await saveTemperature(tempValue);
       } else {
         setError('No temperature data received from device.');
@@ -59,7 +61,7 @@ export default function Temperature() {
     }
   };
 
-  // Save temperature to backend (optional — safe to leave on)
+  // Save temperature to backend
   const saveTemperature = async (temperatureValue) => {
     try {
       const patientId = sessionStorage.getItem('patient_id');
@@ -78,15 +80,18 @@ export default function Temperature() {
         body: JSON.stringify({
           patient_id: patientId,
           temperature: temperatureValue,
-          complete: true,
           id: currentVitalId || null,
         }),
       });
 
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
 
       if (response.ok) {
         console.log('Temperature saved:', result);
+        // Store the vital_id for next steps
+        if (result?.data?.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
       } else {
         console.error('Failed to save temperature:', result);
       }

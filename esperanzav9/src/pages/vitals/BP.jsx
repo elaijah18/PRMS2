@@ -30,7 +30,7 @@ export default function BP() {
     sessionStorage.setItem('step_bp', bpStr)
     sessionStorage.setItem('step_bp_ts', String(Date.now()))
 
-    // Persist to backend so Records.jsx (/patient/vitals/) can read it
+    // Persist to backend - this is the final vital, so mark as complete
     await saveBP(bpStr)
   }
 
@@ -38,9 +38,12 @@ export default function BP() {
     try {
       setSaving(true)
       const patientId = sessionStorage.getItem('patient_id')
-      if (!patientId) return
+      if (!patientId) {
+        console.warn('No patient_id found in session.')
+        return
+      }
 
-      // If you’re aggregating multiple vitals in one record, keep/propagate this id
+      // Get the consolidated vital record ID from previous steps
       const currentVitalId = sessionStorage.getItem('current_vital_id')
 
       const res = await fetch(`${API_BASE}/receive-vitals/`, {
@@ -50,17 +53,21 @@ export default function BP() {
         body: JSON.stringify({
           patient_id: patientId,
           blood_pressure: bpValue,
-          id: currentVitalId || null, // let backend upsert if it supports it
+          id: currentVitalId || null,
+          complete: true, 
         }),
       })
 
       const result = await res.json().catch(() => ({}))
+      
       if (!res.ok) {
         console.error('Save BP failed:', result)
         return
       }
 
-      // If backend returns a consolidated vitals id, keep it so next steps can update same record
+      console.log('Blood pressure saved:', result)
+      
+      // Store the vital_id if returned
       if (result?.data?.id) {
         sessionStorage.setItem('current_vital_id', result.data.id)
       }
@@ -77,7 +84,7 @@ export default function BP() {
       hr: Number(sessionStorage.getItem('step_hr')) || 0,
       bp: sessionStorage.getItem('step_bp') || sessionStorage.getItem('bp') || '—',
       spo2: Number(sessionStorage.getItem('step_spo2')) || 0,
-      temp: Number(sessionStorage.getItem('temperature')) || 0,
+      temp: Number(sessionStorage.getItem('step_temp') || sessionStorage.getItem('temperature')) || 0,
     }
 
     const triage = triageAbnormal(vitals)
