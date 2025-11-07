@@ -596,4 +596,27 @@ def store_fingerprint(request):
     except Patient.DoesNotExist:
         return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
 
- 
+@api_view(['POST'])
+def verify_fingerprint(request):
+    """
+    Called by Raspberry Pi when a fingerprint is matched.
+    Example data: {"user_id": "8", "score": "70"}
+    """
+    user_id = request.data.get("user_id")
+    score = request.data.get("score")
+
+    if not user_id or not score:
+        return Response({"error": "Missing user_id or score"}, status=400)
+
+    try:
+        # Match the fingerprint ID with a patient
+        patient = Patient.objects.get(fingerprint_id=user_id)
+        patient.last_visit = timezone.now()
+        patient.save()
+        return Response({
+            "message": f"Fingerprint match successful for {patient.first_name} {patient.last_name}",
+            "patient_id": patient.patient_id,
+            "score": score
+        }, status=200)
+    except Patient.DoesNotExist:
+        return Response({"error": f"No patient found with fingerprint_id {user_id}"}, status=404)

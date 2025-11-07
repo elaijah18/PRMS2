@@ -4,7 +4,7 @@ from .views import (PatientViewSet, VitalSignsViewSet, QueueViewSet, login,
                     get_vitals, receive_vital_signs, update_vitals, get_all_patients, 
                     test_rpi_connection, logout, get_patient_profile, get_patient_vitals,
                     get_patient_vitals_by_id, archive_patient_view, restore_patient_view,
-                    get_archived_patients, store_fingerprint)
+                    get_archived_patients, store_fingerprint, verify_fingerprint)
 
 router = DefaultRouter()
 router.register(r'patients', PatientViewSet)
@@ -27,6 +27,8 @@ urlpatterns = [ # endpoints
     path('restore-patient/<str:patient_id>/', restore_patient_view, name='restore_patient'),
     path('archived-patients/', get_archived_patients, name='archived_patients'),
     path('store-fingerprint/', store_fingerprint, name='store_fingerprint'),
+    path('verify-fingerprint/', verify_fingerprint, name='verify_fingerprint'),
+
     # path('rpi/data/', receive_vital_signs, name='receive_vital_signs'),
     
 ]
