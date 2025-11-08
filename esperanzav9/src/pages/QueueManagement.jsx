@@ -297,7 +297,7 @@ export default function QueueManagement() {
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Height/Weight</th>
                   <th className="px-4 py-3">BMI</th>
-                  <th className="px-4 py-3">Heart Rate</th>
+                  <th className="px-4 py-3">Pulse Rate</th>
                   <th className="px-4 py-3">Blood Pressure</th>
                   <th className="px-4 py-3">Temperature</th>
                   <th className="px-4 py-3">Oxygen Saturation</th>
@@ -354,6 +354,16 @@ export default function QueueManagement() {
             </table>
           )}
         </div>
+
+      {/* Results Count*/}
+      {!loading && queue.length > 0 && filtered.length > 0 && (
+        <div className="mt-4 text-sm text-slate-600 text-center">
+          Showing <span className="font-semibold">{filtered.length}</span>
+          {' '}out of{' '}
+          <span className="font-semibold">{queue.length}</span>
+          {' '}patient{queue.length === 1 ? '' : 's'}.
+        </div>
+      )}
 
         {/* Footer */}
         <div className="flex justify-end gap-3 p-5">

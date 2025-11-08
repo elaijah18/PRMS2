@@ -72,7 +72,7 @@ export default function Pulse() {
   return (
     <section className="mx-auto max-w-5xl px-4 py-16">
       <h2 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 bg-clip-text text-transparent text-center">
-        Step 3: Heart Rate &amp; Oxygen Saturation
+        Step 3: Pulse Rate &amp; Oxygen Saturation
       </h2>
       <p className="mt-3 text-center text-slate-700">
         Place your fingertip gently on the pulse sensor until the reading stabilizes.
@@ -99,7 +99,7 @@ export default function Pulse() {
         </div>
       ) : (
         <div className="mt-8 grid gap-6 md:grid-cols-2">
-          <ResultCard label="Heart Rate" value={hr} unit="bpm" />
+          <ResultCard label="Pulse Rate" value={hr} unit="bpm" />
           <ResultCard label="Oxygen Saturation" value={spo2} unit="%" />
           <div className="md:col-span-2 text-center">
             <button

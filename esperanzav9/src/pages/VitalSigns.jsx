@@ -1,6 +1,6 @@
 // VitalSigns.jsx
 // This page displays the results of a patient's vitals capture session,
-// including heart rate, temperature, oxygen saturation, height, weight, and BMI.
+// including pulse rate, temperature, oxygen saturation, height, weight, and BMI.
 // It also generates a unique queuing number for the patient and allows printing of results.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -346,7 +346,7 @@ export default function VitalSigns() {
           </div>
 
           <div className="mt-5 grid gap-5 md:grid-cols-4">
-            <Stat label="Heart Rate" value={results.heartRate} unit="bpm" />
+            <Stat label="Pulse Rate" value={results.heartRate} unit="bpm" />
             <Stat label="Oxygen Saturation" value={results.spo2} unit="%" />
             <Stat label="Temperature" value={results.temperature} unit="°C" />
             <Stat label="BMI" value={bmi} unit="kg/m²" />
@@ -472,7 +472,7 @@ export default function VitalSigns() {
             <div className="label">Weight</div><div className="val">{results.weight} kg</div>
             <div className="label">Height</div><div className="val">{results.height} cm</div>
             <div className="label">BMI</div><div className="val">{bmi} kg/m²</div>
-            <div className="label">Heart Rate</div><div className="val">{results.heartRate} bpm</div>
+            <div className="label">Pulse Rate</div><div className="val">{results.heartRate} bpm</div>
             <div className="label">SpO₂</div><div className="val">{results.spo2} %</div>
             <div className="label">Temp</div><div className="val">{results.temperature} °C</div>
             <div className="label">BP</div><div className="val">{results.bp} mmHg</div>

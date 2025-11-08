@@ -1,6 +1,5 @@
 // hehe hindi ko mapakailaman yung input BP since di nagffetch it should be fetch sa BP.jsx
 
-
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import backIcon from '../assets/arrow.png'
@@ -46,16 +45,19 @@ export default function PatientRecords() {
   const fetchPatients = async (searchTerm = '') => {
     setLoading(true)
     try {
-      // Always use /all-patients/ endpoint which includes latest_vitals for each patient
       const url = searchTerm
         ? `http://localhost:8000/all-patients/?search=${encodeURIComponent(searchTerm)}`
         : `http://localhost:8000/all-patients/`
-      const res = await fetch(url, {
-        credentials: 'include',
-      })
+      const res = await fetch(url, { credentials: 'include' })
       if (!res.ok) throw new Error('Failed to fetch patients')
       const data = await res.json()
+
       setPatients(data)
+
+      // For total count display, only set when no search term
+      if (!searchTerm) {
+        setTotalCount(Array.isArray(data) ? data.length : 0)
+      }
     } catch (err) {
       console.error('Failed to fetch patients:', err)
       alert('Failed to fetch patients')
@@ -356,6 +358,9 @@ export default function PatientRecords() {
     setTargetPatientId(null);
   };
 
+  // For showing total count of patients
+  const [totalCount, setTotalCount] = useState(0);
+
   return (
     <section className="relative mx-auto max-w-5xl px-2 py-16">
       <div className="absolute top-4 left-4">
@@ -427,7 +432,7 @@ export default function PatientRecords() {
                 
                 <div className="mt-6 grid gap-4 md:grid-cols-3">
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
-                    <div className="text-sm opacity-90">Heart Rate</div>
+                    <div className="text-sm opacity-90">Pulse Rate</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
                       {p.latest_vitals?.heart_rate ?? '—'}
                     </div>
@@ -571,7 +576,7 @@ export default function PatientRecords() {
 
                 <div className="mt-6 grid gap-4 md:grid-cols-3">
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
-                    <div className="text-sm opacity-90">Heart Rate</div>
+                    <div className="text-sm opacity-90">Pulse Rate</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
                       {latestVitals?.heart_rate ?? '—'}
                     </div>
@@ -628,7 +633,7 @@ export default function PatientRecords() {
                         <th className="px-4 py-3 text-left">Date</th>
                         <th className="px-4 py-3 text-left">Height</th>
                         <th className="px-4 py-3 text-left">Weight</th>
-                        <th className="px-4 py-3 text-left">Heart Rate</th>
+                        <th className="px-4 py-3 text-left">Pulse Rate</th>
                         <th className="px-4 py-3 text-left">Oxygen Saturation</th>
                         <th className="px-4 py-3 text-left">Temperature</th>
                         <th className="px-4 py-3 text-left">BMI</th>
@@ -671,10 +676,21 @@ export default function PatientRecords() {
               </>
             )}
           </div>
+          
         ))}
       </div>
 
-      
+      {/* Results counter */}
+      {!loading && patients.length > 0 && (
+        <div className="mt-4 text-sm text-slate-600 text-center">
+          Showing <span className="font-semibold">{patients.length}</span>
+          {totalCount > 0 && (
+            <> out of <span className="font-semibold">{totalCount}</span></>
+          )}
+          {' '}patient{totalCount === 1 ? '' : 's'}.
+        </div>
+      )}
+
       {/* Archive Confirmation Modal */}
       {showArchiveModal && (
       <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">

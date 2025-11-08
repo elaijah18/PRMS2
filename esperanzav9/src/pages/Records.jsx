@@ -345,7 +345,7 @@ export default function Records() {
 
       {/* Latest vitals cards */}
       <div className="mt-4 grid gap-4 md:grid-cols-3 print:gap-2">
-        <Card label="Heart Rate" icon={heartRateIcon} alt="Heart rate" value={latest?.heartRate} unit="BPM" />
+        <Card label="Pulse Rate" icon={heartRateIcon} alt="Pulse rate" value={latest?.heartRate} unit="BPM" />
         <Card label="Temperature" icon={temperatureIcon} alt="Temperature" value={latest?.temperature} unit="°C" />
         <Card label="Oxygen Saturation" icon={spo2Icon} alt="Oxygen saturation" value={latest?.spo2} unit="%" />
         <Card label="Blood Pressure" icon={bloodPressureIcon} alt="Blood Pressure" value={latest?.bloodPressure} unit="mmHg" />
@@ -360,7 +360,7 @@ export default function Records() {
           <thead className="bg-slate-50 text-[#406E65] font-medium">
             <tr>
               <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Heart Rate</th>
+              <th className="px-4 py-3">Pulse Rate</th>
               <th className="px-4 py-3">Blood Pressure</th>
               <th className="px-4 py-3">Temperature</th>
               <th className="px-4 py-3">SpO₂</th>
@@ -429,7 +429,7 @@ export default function Records() {
             <div className="label">Weight</div><div className="val">{results.weight} kg</div>
             <div className="label">Height</div><div className="val">{results.height} cm</div>
             <div className="label">BMI</div><div className="val">{bmi} kg/m²</div>
-            <div className="label">Heart Rate</div><div className="val">{results.heartRate} bpm</div>
+            <div className="label">Pulse Rate</div><div className="val">{results.heartRate} bpm</div>
             <div className="label">SpO₂</div><div className="val">{results.spo2} %</div>
             <div className="label">Temp</div><div className="val">{results.temperature} °C</div>
             <div className="label">BP</div><div className="val">{results.bp} mmHg</div>

@@ -21,8 +21,8 @@ const calcAge = (dobStr) => {
 
 export default function Reports() {
   const nav = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams() // ✅ Add this
-  const [query, setQuery] = useState(searchParams.get('q') || '') // ✅ Initialize query from URL
+  const [searchParams, setSearchParams] = useSearchParams() 
+  const [query, setQuery] = useState(searchParams.get('q') || '') 
   const [patients, setPatients] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -31,12 +31,12 @@ export default function Reports() {
   }, [])
 
   useEffect(() => {
-    // ✅ Whenever URL ?q changes, sync with the search box
+    // Whenever URL ?q changes, sync with the search box
     const q = searchParams.get('q') || ''
     setQuery(q)
   }, [searchParams])
 
-  // ✅ Helper functions (place them anywhere inside the component)
+  // Helper functions (place them anywhere inside the component)
   const handleSearch = () => {
     if (query.trim()) {
       setSearchParams({ q: query.trim() })
@@ -49,7 +49,7 @@ export default function Reports() {
     setQuery('')
     setSearchParams({})
   }
-  // ✅ End of helper functions
+  // End of helper functions
 
   const fetchPatients = async () => {
     setLoading(true)
@@ -144,7 +144,7 @@ export default function Reports() {
 
       {/* Page title */}
       <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-slate-700 bg-clip-text text-transparent text-center">
-        Patient Records
+        Patient Reports
       </h2>
 
       {/* Header bar and search */}
@@ -159,7 +159,7 @@ export default function Reports() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()} // ✅ Uses helper
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 placeholder="Search name, ID, address or contact…"
                 className="w-full rounded-full px-4 py-2 outline-none shadow-inner pr-10"
                 style={{
@@ -228,6 +228,17 @@ export default function Reports() {
               )}
             </tbody>
           </table>
+
+          {/* Results footer */}
+          {!loading && patients.length > 0 && filtered.length > 0 && (
+            <div className="px-6 pb-4 pt-2 text-sm text-slate-600 text-center">
+              Showing <span className="font-semibold">{filtered.length}</span>
+              {' '}out of{' '}
+              <span className="font-semibold">{patients.length}</span>
+              {' '}patient{patients.length === 1 ? '' : 's'}.
+            </div>
+          )}
+
         </div>
         <div className="h-4" />
       </div>
