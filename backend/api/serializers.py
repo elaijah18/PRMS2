@@ -10,7 +10,7 @@ class PatientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
         fields = '__all__'
-        read_only_fields = ('patient_id',)  # Make patient_id read-only
+        read_only_fields = ('patient_id',)
     
     def validate_contact(self, value):
         if not re.match(r'^\d{11}$', value):
@@ -42,7 +42,6 @@ class PatientSerializer(serializers.ModelSerializer):
                 if not new_pin.isdigit() or len(new_pin) != 4:
                     raise serializers.ValidationError({"pin": "PIN must be 4 digits"})
                 validated_data['pin'] = make_password(new_pin)
-            # If already hashed, keep it as-is (it's already in validated_data)
         else:
             # If PIN not in update data, preserve existing PIN
             validated_data.pop('pin', None)
@@ -60,7 +59,7 @@ class QueueEntrySerializer(serializers.ModelSerializer):
     
     class Meta:
         model = QueueEntry
-        fields = ['id', 'patient', 'priority', 'entered_at', 'latest_vitals']
+        fields = ['id', 'patient', 'priority', 'entered_at', 'queue_number', 'latest_vitals'] 
     
     def get_latest_vitals(self, obj):
         """Get the latest vital signs for the patient in this queue entry"""

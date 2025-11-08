@@ -126,11 +126,58 @@ class QueueEntry(models.Model):
         if not self.priority:
             self.priority = compute_patient_priority(self.patient)
         
+        # Assign queue number based on priority
         if not self.queue_number:
             today = timezone.now().date()
-            count_today = QueueEntry.objects.filter(entered_at__date=today).count() + 1
-            self.queue_number = f"Q{count_today:03d}"
+            
+            # Determine if this is a priority patient
+            is_priority = self.priority in ['CRITICAL', 'HIGH', 'MEDIUM']
+            
+            if is_priority:
+                # Priority patients: 300-999
+                # Find the highest priority queue number today
+                highest_priority = QueueEntry.objects.filter(
+                    entered_at__date=today,
+                    queue_number__gte='300',
+                    queue_number__lte='999'
+                ).order_by('-queue_number').first()
+                
+                if highest_priority and highest_priority.queue_number:
+                    try:
+                        next_num = int(highest_priority.queue_number) + 1
+                        # If we've exceeded 999, wrap to 300
+                        if next_num > 999:
+                            next_num = 300
+                    except ValueError:
+                        next_num = 300
+                else:
+                    next_num = 300
+                
+                self.queue_number = str(next_num)
+            else:
+                # Normal patients: 001-299
+                # Find the highest normal queue number today
+                highest_normal = QueueEntry.objects.filter(
+                    entered_at__date=today,
+                    queue_number__gte='001',
+                    queue_number__lte='299'
+                ).order_by('-queue_number').first()
+                
+                if highest_normal and highest_normal.queue_number:
+                    try:
+                        next_num = int(highest_normal.queue_number) + 1
+                        # If we've exceeded 299, wrap to 001
+                        if next_num > 299:
+                            next_num = 1
+                    except ValueError:
+                        next_num = 1
+                else:
+                    next_num = 1
+                
+                self.queue_number = f"{next_num:03d}"
+        
         super().save(*args, **kwargs)
+
         
               
 class ArchivedPatient(models.Model):

@@ -28,7 +28,8 @@ export default function QueueManagement() {
   const tableRef = useRef(null)
 
   const currentEntry = queue[now]
-  const currentNumber = useMemo(() => currentEntry?.number ?? '—', [currentEntry])
+  // Use 'queue_number' from database
+  const currentNumber = useMemo(() => currentEntry?.queue_number ?? '—', [currentEntry])
 
   // Fetch queue data with embedded vitals from backend
   const fetchQueue = async () => {
@@ -50,8 +51,8 @@ export default function QueueManagement() {
           id: entry.id,
           queueId: entry.id,
 
-          // display number with leading zeros
-          number: String(index + 1).padStart(3, '0'),
+          // Use the actual queue number from database
+          queue_number: entry.queue_number || '000',  // Uses 001-299 or 300-999
 
           // priority fields (either from BE or left falsy)
           priority: (entry.priority || 'NORMAL').toUpperCase(),  // 'PRIORITY' | 'NORMAL'
@@ -152,7 +153,7 @@ export default function QueueManagement() {
     return queue.filter((r) => {
       const vitals = getPatientVitals(r)
       return (
-        r.number.toLowerCase().includes(q) ||
+        r.queue_number.toLowerCase().includes(q) ||
         r.name.toLowerCase().includes(q) ||
         r.patientId.toLowerCase().includes(q) ||
         (vitals.bp && String(vitals.bp).toLowerCase().includes(q))
@@ -175,7 +176,8 @@ export default function QueueManagement() {
             )}
           </span>
         )}
-        <span className={`tabular-nums ${isPriority ? 'ml-1' : ''}`}>{rec.number}</span>
+        <span className={`tabular-nums ${isPriority ? 'ml-1' : ''}`}>{rec.queue_number}</span>
+
       </div>
     )
   }
