@@ -182,8 +182,13 @@ def receive_vital_signs(request):
     ])
     
     if all_vitals_complete:
-        # Check if patient is already in queue
-        existing_queue = QueueEntry.objects.filter(patient=patient).first()
+    # Check if patient is already in queue TODAY with active status
+        today = timezone.now().date()
+        existing_queue = QueueEntry.objects.filter(
+            patient=patient,
+            entered_at__date=today,
+            status__in=['WAITING', 'SERVING']
+        ).first()
         
         if not existing_queue:
             # Compute priority based on vitals
@@ -194,8 +199,8 @@ def receive_vital_signs(request):
                 patient=patient,
                 priority=priority,
                 entered_at=timezone.now()
-            )   
-
+            )
+        
     return Response({
         "message": "Vital signs saved successfully",
         "data": {
