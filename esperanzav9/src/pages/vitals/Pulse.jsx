@@ -1,78 +1,64 @@
 // Pulse.jsx
-// Page for measuring and displaying pulse rate
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
 import ResultCard from '../../components/ResultCard';
-import { initModalDelay, SESSION_KEYS } from './utils';
 import PulseImg from '../../assets/pulse.png';
+import { SESSION_KEYS, initModalDelay } from './utils';
 
 export default function Pulse() {
   const nav = useNavigate();
   const [hr, setHr] = useState(null);
   const [spo2, setSpo2] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [showInit, setShowInit] = useState(false);
 
-  const API_BASE = 'http://localhost:8000';
+  const API_BASE = 'http://localhost:8000/api';
 
-  const start = () => {
-    setShowInit(true);
-    setTimeout(() => {
-      setShowInit(false);
-      const nextHr = Math.floor(Math.random() * (96 - 60 + 1)) + 60;
-      const nextSpo2 = Math.floor(Math.random() * (99 - 95 + 1)) + 95;
-      setHr(nextHr);
-      setSpo2(nextSpo2);
-      sessionStorage.setItem(SESSION_KEYS.hr, String(nextHr));
-      sessionStorage.setItem(SESSION_KEYS.spo2, String(nextSpo2));
-      
-      // CONSOLIDATED CALL HERE 
-      savePulseData(nextHr, nextSpo2);
-    }, initModalDelay);
-  };
+  const handleStart = async () => {
+    setLoading(true);
+    setError('');
+    setShowInit(true);
+    setHr(null);
+    setSpo2(null);
 
-// NEW CONSOLIDATED FUNCTION 
-  const savePulseData = async (hrValue, spo2Value) => {
-    try {
-      const patientId = sessionStorage.getItem('patient_id');
+    try {
+      const res = await fetch(`${API_BASE}/start_vitals/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
-      if (!patientId) {
-        console.warn('No patient_id found in session.');
-        return;
-      }
-      
-      const currentVitalId = sessionStorage.getItem('current_vital_id');
+      const data = await res.json();
+      console.log('🔥 Response from Django:', data);
 
-      const response = await fetch(`${API_BASE}/receive-vitals/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          patient_id: patientId,
-          heart_rate: hrValue,
-          oxygen_saturation: spo2Value, // COMBINE BOTH HERE
-          id: currentVitalId || null,
-        }),
-      });
+      if (res.ok) {
+        const heartRate = data.heart_rate;
+        const oxygenSaturation = data.spo2;
 
-      const result = await response.json();
+        setHr(heartRate);
+        setSpo2(oxygenSaturation);
 
-      if (response.ok) {
-        console.log('Pulse and SpO2 saved:', result);
-      } else {
-        console.error('Failed to save pulse data:', result);
-      }
-    } catch (err) {
-      console.error('Error saving pulse data:', err);
-    }
-  };  // END NEW FUNCTION
-  const ready = hr != null && spo2 != null;
+        sessionStorage.setItem(SESSION_KEYS.hr, String(heartRate));
+        sessionStorage.setItem(SESSION_KEYS.spo2, String(oxygenSaturation));
+      } else {
+        setError(data.error || 'Failed to get pulse data.');
+      }
+    } catch (err) {
+      console.error('Error fetching pulse data:', err);
+      setError('Error connecting to pulse sensor.');
+    } finally {
+      setLoading(false);
+      setTimeout(() => setShowInit(false), initModalDelay);
+    }
+  };
+
+  const ready = hr !== null && spo2 !== null;
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-16">
       <h2 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 bg-clip-text text-transparent text-center">
-        Step 3: Heart Rate &amp; Oxygen Saturation
+        Step 3: Heart Rate & Oxygen Saturation
       </h2>
       <p className="mt-3 text-center text-slate-700">
         Place your fingertip gently on the pulse sensor until the reading stabilizes.
@@ -91,11 +77,14 @@ export default function Pulse() {
       {!ready ? (
         <div className="mt-8 text-center">
           <button
-            onClick={start}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+            onClick={handleStart}
+            disabled={loading}
+            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60"
           >
-            Start
+            {loading ? 'Starting…' : 'Start'}
           </button>
+          {error && <p className="mt-3 text-red-600 font-medium">{error}</p>}
+          {loading && <p className="mt-3 text-slate-600">Initializing pulse sensor…</p>}
         </div>
       ) : (
         <div className="mt-8 grid gap-6 md:grid-cols-2">
@@ -113,8 +102,8 @@ export default function Pulse() {
       )}
 
       <SmallModal open={showInit}>
-        <p className="text-xl font-semibold text-[#406E65]">Initializing pulse…</p>
-        <p className="mt-1 text-[#406E65]">Keep your hand still.</p>
+        <p className="text-xl font-semibold text-slate-800">Initializing pulse…</p>
+        <p className="mt-1 text-slate-600">Keep your hand still.</p>
       </SmallModal>
     </section>
   );

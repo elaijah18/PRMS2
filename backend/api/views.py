@@ -13,6 +13,524 @@ from .utils import compute_patient_priority
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 from django.contrib.auth.hashers import check_password
+import serial, json, time, threading
+
+
+SERIAL_PORT = '/dev/ttyACM0'  # Adjust if using ACM1
+BAUD_RATE = 9600
+# active_serial = None
+# active_serial_lock = threading.Lock()
+
+# def get_next_fingerprint_id():
+#     """Get the next available fingerprint ID (1-127)"""
+#     # Get all used fingerprint IDs
+#     used_ids = set(Patient.objects.filter(
+#         fingerprint_id__isnull=False
+#     ).values_list('fingerprint_id', flat=True))
+    
+#     # Find first available ID
+#     for i in range(1, 128):
+#         if str(i) not in used_ids:
+#             return str(i)
+    
+#     return None  # All IDs are used
+
+# # Simpler approach: Keep serial connection open globally
+# # Add at module level (after imports)
+
+
+
+# @api_view(['POST'])
+# def start_fingerprint_scan(request):
+#     """
+#     Start fingerprint scanning mode for login
+#     Arduino will continuously scan until a match is found
+#     """
+#     ser = get_or_create_serial()
+#     if ser is None:
+#         return Response(
+#             {"error": "Arduino connection error"}, 
+#             status=status.HTTP_503_SERVICE_UNAVAILABLE
+#         )
+    
+#     try:
+#         with active_serial_lock:
+#             # Clear buffer
+#             ser.reset_input_buffer()
+            
+#             # Send scan command to Arduino
+#             ser.write(b"SCAN\n")
+#             ser.flush()
+        
+#         return Response({
+#             "status": "scanning",
+#             "message": "Place finger on sensor"
+#         })
+        
+#     except Exception as e:
+#         return Response(
+#             {"error": f"Communication error: {str(e)}"}, 
+#             status=status.HTTP_503_SERVICE_UNAVAILABLE
+#         )
+
+
+# @api_view(['GET'])
+# def check_fingerprint_match(request):
+#     """
+#     Poll for fingerprint match results
+#     Returns patient data if match found
+#     """
+#     ser = get_or_create_serial()
+#     if ser is None:
+#         return Response(
+#             {"error": "Arduino connection error"}, 
+#             status=status.HTTP_503_SERVICE_UNAVAILABLE
+#         )
+    
+#     try:
+#         with active_serial_lock:
+#             if ser.in_waiting > 0:
+#                 line = ser.readline().decode('utf-8').strip()
+                
+#                 if line:
+#                     print(f"[DEBUG] Raw Arduino response: {line}")  # ← ADD THIS
+                    
+#                     try:
+#                         data = json.loads(line)
+#                         print(f"[DEBUG] Parsed JSON: {data}")  # ← ADD THIS
+                        
+#                         # If match found, get patient info
+#                         if data.get('status') == 'match':
+#                             fingerprint_id = str(data.get('id'))
+#                             print(f"[DEBUG] Looking for fingerprint_id: '{fingerprint_id}' (type: {type(fingerprint_id)})")  # ← ADD THIS
+                            
+#                             # DEBUG: Show all stored fingerprint IDs
+#                             all_fps = Patient.objects.filter(fingerprint_id__isnull=False).values_list('patient_id', 'fingerprint_id')
+#                             print(f"[DEBUG] All stored fingerprint IDs: {list(all_fps)}")  # ← ADD THIS
+                            
+#                             try:
+#                                 patient = Patient.objects.get(fingerprint_id=fingerprint_id)
+#                                 print(f"[DEBUG] Patient found: {patient.first_name} {patient.last_name}")  # ← ADD THIS
+                                
+#                                 # Create session (auto-login)
+#                                 request.session['user_type'] = 'patient'
+#                                 request.session['patient_id'] = patient.patient_id
+                                
+#                                 # Update last visit
+#                                 patient.last_visit = timezone.now()
+#                                 patient.save()
+                                
+#                                 return Response({
+#                                     "status": "success",
+#                                     "patient_id": patient.patient_id,
+#                                     "name": f"{patient.first_name} {patient.last_name}",
+#                                     "fingerprint_id": fingerprint_id,
+#                                     "confidence": data.get('confidence', 0)
+#                                 })
+                                
+#                             except Patient.DoesNotExist:
+#                                 print(f"[DEBUG] No patient found with fingerprint_id='{fingerprint_id}'")  # ← ADD THIS
+#                                 return Response({
+#                                     "status": "error",
+#                                     "message": f"Fingerprint ID {fingerprint_id} not registered"
+#                                 })
+                        
+#                         # Return Arduino status (scanning, no_match, etc)
+#                         return Response(data)
+                        
+#                     except json.JSONDecodeError as e:
+#                         print(f"[DEBUG] JSON decode error: {e}")  # ← ADD THIS
+#                         return Response({
+#                             "status": "scanning", 
+#                             "message": line
+#                         })
+            
+#             # No data yet
+#             return Response({
+#                 "status": "scanning", 
+#                 "message": "Waiting for finger"
+#             })
+                
+#     except Exception as e:
+#         print(f"[DEBUG] Exception: {e}")  # ← ADD THIS
+#         return Response(
+#             {"error": f"Error: {str(e)}"}, 
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
+
+
+# @api_view(['POST'])
+# def stop_fingerprint_scan(request):
+#     """
+#     Stop fingerprint scanning mode
+#     """
+#     ser = get_or_create_serial()
+#     if ser is None:
+#         return Response(
+#             {"error": "Arduino connection error"}, 
+#             status=status.HTTP_503_SERVICE_UNAVAILABLE
+#         )
+    
+#     try:
+#         with active_serial_lock:
+#             # Send stop command
+#             ser.write(b"STOP\n")
+#             ser.flush()
+        
+#         return Response({
+#             "status": "stopped",
+#             "message": "Scanning stopped"
+#         })
+        
+#     except Exception as e:
+#         return Response(
+#             {"error": f"Communication error: {str(e)}"}, 
+#             status=status.HTTP_503_SERVICE_UNAVAILABLE
+#         )
+
+# def get_or_create_serial():
+#     """Get or create a persistent serial connection"""
+#     global active_serial
+    
+#     with active_serial_lock:
+#         if active_serial is None or not active_serial.is_open:
+#             try:
+#                 active_serial = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+#                 time.sleep(2)  # Let Arduino initialize
+#             except serial.SerialException as e:
+#                 print(f"Failed to open serial: {e}")
+#                 return None
+#         return active_serial
+
+# @api_view(['POST'])
+# def start_fingerprint_enrollment(request):
+#     """Start fingerprint enrollment process"""
+#     patient_id = request.data.get('patient_id')
+    
+#     if not patient_id:
+#         return Response(
+#             {"error": "patient_id is required"}, 
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     try:
+#         patient = Patient.objects.get(patient_id=patient_id)
+        
+#         if patient.fingerprint_id:
+#             return Response(
+#                 {"error": f"Patient already has fingerprint ID {patient.fingerprint_id}"}, 
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         fingerprint_id = get_next_fingerprint_id()
+        
+#         if not fingerprint_id:
+#             return Response(
+#                 {"error": "No available fingerprint slots (maximum 127 reached)"}, 
+#                 status=status.HTTP_507_INSUFFICIENT_STORAGE
+#             )
+        
+#         # Get persistent serial connection
+#         ser = get_or_create_serial()
+#         if ser is None:
+#             return Response(
+#                 {"error": "Arduino connection error"}, 
+#                 status=status.HTTP_503_SERVICE_UNAVAILABLE
+#             )
+        
+#         try:
+#             with active_serial_lock:
+#                 # Clear any old data
+#                 ser.reset_input_buffer()
+                
+#                 # Send enrollment command
+#                 command = f"E:{fingerprint_id}\n"
+#                 ser.write(command.encode())
+#                 ser.flush()
+            
+#             return Response({
+#                 "status": "started",
+#                 "fingerprint_id": fingerprint_id,
+#                 "patient_id": patient_id,
+#                 "message": "Enrollment started - place finger on sensor"
+#             })
+                
+#         except Exception as e:
+#             return Response(
+#                 {"error": f"Communication error: {str(e)}"}, 
+#                 status=status.HTTP_503_SERVICE_UNAVAILABLE
+#             )
+        
+#     except Patient.DoesNotExist:
+#         return Response(
+#             {"error": "Patient not found"}, 
+#             status=status.HTTP_404_NOT_FOUND
+#         )
+
+
+# @api_view(['GET'])
+# def check_enrollment_status(request):
+#     """Poll Arduino for enrollment status updates"""
+#     fingerprint_id = request.query_params.get('fingerprint_id')
+#     patient_id = request.query_params.get('patient_id')
+    
+#     if not fingerprint_id or not patient_id:
+#         return Response(
+#             {"error": "fingerprint_id and patient_id are required"}, 
+#             status=status.HTTP_400_BAD_REQUEST
+#         )
+    
+#     ser = get_or_create_serial()
+#     if ser is None:
+#         return Response(
+#             {"error": "Arduino connection error"}, 
+#             status=status.HTTP_503_SERVICE_UNAVAILABLE
+#         )
+    
+#     try:
+#         with active_serial_lock:
+#             # Check if there's data waiting
+#             if ser.in_waiting > 0:
+#                 line = ser.readline().decode('utf-8').strip()
+                
+#                 if line:
+#                     try:
+#                         data = json.loads(line)
+                        
+#                         # If enrollment successful, save to database
+#                         if data.get('status') == 'success':
+#                             try:
+#                                 patient = Patient.objects.get(patient_id=patient_id)
+#                                 patient.fingerprint_id = fingerprint_id
+#                                 patient.save()
+                                
+#                                 return Response({
+#                                     "status": "success",
+#                                     "fingerprint_id": fingerprint_id,
+#                                     "message": "Fingerprint enrolled and saved to database"
+#                                 })
+#                             except Patient.DoesNotExist:
+#                                 return Response(
+#                                     {"error": "Patient not found"}, 
+#                                     status=status.HTTP_404_NOT_FOUND
+#                                 )
+                        
+#                         # Return current status from Arduino
+#                         return Response(data)
+                        
+#                     except json.JSONDecodeError:
+#                         # Return the raw message if not JSON
+#                         return Response({
+#                             "status": "waiting", 
+#                             "message": line
+#                         })
+            
+#             # No data available yet
+#             return Response({
+#                 "status": "waiting", 
+#                 "message": "No update from sensor"
+#             })
+                
+#     except Exception as e:
+#         print(f"Error reading status: {e}")
+#         return Response(
+#             {"error": f"Error: {str(e)}"}, 
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
+
+# @api_view(['DELETE'])
+# def delete_fingerprint(request, patient_id):
+#     """
+#     Delete a patient's fingerprint from both database and sensor
+#     """
+#     try:
+#         patient = Patient.objects.get(patient_id=patient_id)
+        
+#         if not patient.fingerprint_id:
+#             return Response(
+#                 {"error": "Patient has no fingerprint enrolled"}, 
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+        
+#         fingerprint_id = patient.fingerprint_id
+        
+#         # Delete from sensor
+#         try:
+#             with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
+#                 time.sleep(2)
+                
+#                 command = f"DELETE:{fingerprint_id}\n"
+#                 ser.write(command.encode())
+                
+#                 time.sleep(1)
+#                 if ser.in_waiting:
+#                     response = ser.readline().decode('utf-8').strip()
+#                     print(f"Arduino response: {response}")
+        
+#         except serial.SerialException as e:
+#             print(f"Warning: Could not delete from sensor: {e}")
+        
+#         # Delete from database
+#         patient.fingerprint_id = None
+#         patient.save()
+        
+#         return Response({
+#             "message": f"Fingerprint {fingerprint_id} deleted successfully",
+#             "patient_id": patient_id
+#         })
+        
+#     except Patient.DoesNotExist:
+#         return Response(
+#             {"error": "Patient not found"}, 
+#             status=status.HTTP_404_NOT_FOUND
+#         )
+
+
+# @api_view(['GET'])
+# def get_fingerprint_count(request):
+#     """Get total number of enrolled fingerprints from sensor"""
+#     try:
+#         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
+#             time.sleep(2)
+            
+#             ser.write(b"COUNT\n")
+#             time.sleep(1)
+            
+#             if ser.in_waiting:
+#                 response = ser.readline().decode('utf-8').strip()
+#                 try:
+#                     data = json.loads(response)
+#                     return Response(data)
+#                 except json.JSONDecodeError:
+#                     return Response({"error": "Invalid response from sensor"})
+            
+#             return Response({"error": "No response from sensor"})
+            
+#     except serial.SerialException as e:
+#         return Response(
+#             {"error": f"Arduino connection error: {str(e)}"}, 
+#             status=status.HTTP_503_SERVICE_UNAVAILABLE
+#         )
+
+latest_vitals = {
+    "temperature": None,
+    "heart_rate": None,
+    "spo2": None,
+    "height": None,
+}
+
+@api_view(['POST'])
+def start_vitals(request):
+    """Trigger Arduino to measure temperature, heart rate, SpO2, height"""
+    try:
+        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=3) as ser:
+            time.sleep(2)  # Give Arduino time to reset
+            ser.flushInput()
+            ser.flushOutput()
+            ser.write(b'START\n')
+            time.sleep(1.5)
+
+            line = ser.readline().decode('utf-8').strip()
+            print("Raw serial data:", line)
+
+            if not line:
+                raise Exception("No data received from Arduino.")
+
+            data = json.loads(line)
+            latest_vitals["temperature"] = data.get("temperature")
+            latest_vitals["heart_rate"] = data.get("heart_rate")
+            latest_vitals["spo2"] = data.get("spo2")
+            latest_vitals["height"] = data.get("height")
+
+            return Response(latest_vitals)
+
+    except Exception as e:
+        print("Error reading vitals:", e)
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def fetch_temperature(request):
+    """Fetch latest temperature from Arduino"""
+    try:
+        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
+            line = ser.readline().decode('utf-8').strip()
+            if not line:
+                return Response({"error": "No data"}, status=404)
+
+            data = json.loads(line)
+            temperature = data.get("temperature")
+            if temperature is not None:
+                latest_vitals["temperature"] = float(temperature)
+                print(f"🌡️ Temperature: {temperature}°C")
+                return Response({"temperature": temperature})
+            else:
+                return Response({"error": "No temperature key"}, status=400)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def fetch_heart_rate(request):
+    """Fetch latest heart rate from Arduino"""
+    try:
+        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
+            line = ser.readline().decode('utf-8').strip()
+            if not line:
+                return Response({"error": "No data"}, status=404)
+
+            data = json.loads(line)
+            heart_rate = data.get("heart_rate")
+            if heart_rate is not None:
+                latest_vitals["heart_rate"] = int(heart_rate)
+                print(f"❤️ Heart Rate: {heart_rate} bpm")
+                return Response({"heart_rate": heart_rate})
+            else:
+                return Response({"error": "No heart_rate key"}, status=400)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def fetch_spo2(request):
+    """Fetch latest oxygen saturation from Arduino"""
+    try:
+        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
+            line = ser.readline().decode('utf-8').strip()
+            if not line:
+                return Response({"error": "No data"}, status=404)
+
+            data = json.loads(line)
+            spo2 = data.get("spo2")
+            if spo2 is not None:
+                latest_vitals["spo2"] = int(spo2)
+                print(f"🫁 SpO2: {spo2}%")
+                return Response({"spo2": spo2})
+            else:
+                return Response({"error": "No spo2 key"}, status=400)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+    
+
+@api_view(['GET'])
+def fetch_height(request):
+    """Fetch latest height from Arduino"""
+    try:
+        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
+            line = ser.readline().decode('utf-8').strip()
+            if not line:
+                return Response({"error": "No data"}, status=404)
+
+            data = json.loads(line)
+            height = data.get("height")
+            if height is not None:
+                latest_vitals["height"] = int(height)
+                print(f"🫁 Height: {height}%")
+                return Response({"height": height})
+            else:
+                return Response({"error": "No height key"}, status=400)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 
 # Create your views here.
