@@ -18,8 +18,11 @@ export default function Records() {
   const [latest, setLatest] = useState(null)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  const [printData, setPrintData] = useState(null)
+  const [isPrinting, setIsPrinting] = useState(false)
   const { username } = useParams()
   const nav = useNavigate()
+  const printRef = useRef(null)
 
   // ---------- helpers ----------
   const calcAge = (dobStr) => {
@@ -71,7 +74,7 @@ export default function Records() {
     if (found) return found
 
     // 2) fallback: if user just entered BP on this same day and backend
-    //    didn’t include it in history yet, show the local value
+    //    didn't include it in history yet, show the local value
     const fallback = sessionStorage.getItem('step_bp') || sessionStorage.getItem('bp')
     const ts = Number(sessionStorage.getItem('step_bp_ts') || 0)
     if (fallback && ts) {
@@ -81,7 +84,7 @@ export default function Records() {
       if (rowDate && !Number.isNaN(rowDate.getTime()) && isSameYMD(when, rowDate)) {
         return fallback
       }
-      // if row doesn’t have a date, still use fallback for the top-most (today) row
+      // if row doesn't have a date, still use fallback for the top-most (today) row
       if (!row.date && isSameYMD(when, new Date())) return fallback
     }
     return null
@@ -174,67 +177,179 @@ export default function Records() {
     nav('/login')
   }
 
-  // ====== NEW: fields for the print ticket ======
-  const printRef = useRef(null)
-
-  // profile-derived identity (fallback to session)
-  const patientId = profile?.patientId ?? (sessionStorage.getItem('patient_id') || '—')
-  const patientName = profile?.name ?? (sessionStorage.getItem('patient_name') || '—')
-
-  // latest vitals fallback from localStorage if API didn't provide
-  const latestLocal = (() => {
+  // ---------- Enhanced Print Functions ----------
+  
+  // Enhanced print function that fetches formatted data from backend
+  const printLatestFromBackend = async () => {
     try {
-      return JSON.parse(localStorage.getItem('latestVitals') || 'null')
-    } catch { return null }
-  })()
-
-  // prepare "results" object for printing
-  const results = {
-    weight: latest?.weight ?? latestLocal?.weight ?? '—',
-    height: latest?.height ?? latestLocal?.height ?? '—',
-    heartRate: latest?.heartRate ?? latestLocal?.heartRate ?? '—',
-    spo2: latest?.spo2 ?? latestLocal?.spo2 ?? '—',
-    temperature: latest?.temperature ?? latestLocal?.temperature ?? '—',
-    bp: latest?.bloodPressure ?? latestLocal?.bp ?? latestLocal?.blood_pressure ?? '—',
-  }
-
-  // compute BMI if missing
-  const bmi = (() => {
-    if (typeof (latest?.bmi) === 'number') return latest.bmi
-    const h = Number(results.height) / 100
-    const w = Number(results.weight)
-    if (Number.isFinite(h) && h > 0 && Number.isFinite(w)) {
-      const v = w / (h * h)
-      if (Number.isFinite(v)) return Number(v.toFixed(1))
+      setIsPrinting(true)
+      
+      // Get patient ID
+      const patientId = profile?.patientId || sessionStorage.getItem('patient_id')
+      
+      if (!patientId) {
+        alert('Patient ID not found. Please refresh and try again.')
+        setIsPrinting(false)
+        return
+      }
+      
+      // Fetch formatted print data from backend
+      const response = await fetch(`http://localhost:8000/print-vitals/${patientId}/`, {
+        credentials: 'include'
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch print data')
+      }
+      
+      const data = await response.json()
+      setPrintData(data)
+      
+      // Wait a bit for React to update the DOM with print data
+      setTimeout(() => {
+        window.print()
+        setIsPrinting(false)
+      }, 100)
+      
+    } catch (error) {
+      console.error('Print error:', error)
+      alert('Failed to prepare print data. Using local data instead.')
+      setIsPrinting(false)
+      // Fallback to original print method
+      window.print()
     }
-    return latestLocal?.bmi ?? '—'
-  })()
-
-  // triage / priority (saved by the vitals page)
-  const pri = sessionStorage.getItem('last_vitals_priority') || 'NORMAL'
-  const priCode = sessionStorage.getItem('last_vitals_priority_code') || null
-  const priReasons = (() => {
-    try { return JSON.parse(sessionStorage.getItem('last_vitals_priority_reasons') || '[]') } catch { return [] }
-  })()
-
-  // queue number (fallback to last number used today)
-  const queue = (() => {
-    const raw = localStorage.getItem('queueNo')
-    if (!raw) return '—'
-    const n = Number(raw)
-    return Number.isFinite(n) ? String(n).padStart(3, '0') : '—'
-  })()
-
-  // printed timestamp
-  const now = new Date()
-  const printedAt = `${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-
-  // print handler wired to existing button (do not change button)
-  const printLatest = () => {
-    window.print()
   }
 
-  // ---------- UI ----------
+  // Direct PDF download option
+  const downloadPrintablePDF = async () => {
+    try {
+      const patientId = profile?.patientId || sessionStorage.getItem('patient_id')
+      
+      if (!patientId) {
+        alert('Patient ID not found. Please refresh and try again.')
+        return
+      }
+      
+      // Fetch PDF from backend
+      const response = await fetch(
+        `http://localhost:8000/print-vitals/${patientId}/?format=pdf`,
+        { credentials: 'include' }
+      )
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF')
+      }
+      
+      // Create blob and download
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `vitals_${patientId}_${new Date().toISOString().split('T')[0]}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      
+    } catch (error) {
+      console.error('PDF download error:', error)
+      alert('Failed to download PDF. Please try printing instead.')
+    }
+  }
+
+  // Enhanced print ticket with backend data
+  const printEnhancedTicket = () => {
+    // profile-derived identity (fallback to session)
+    const patientId = profile?.patientId ?? (sessionStorage.getItem('patient_id') || '—')
+    const patientName = profile?.name ?? (sessionStorage.getItem('patient_name') || '—')
+
+    // latest vitals fallback from localStorage if API didn't provide
+    const latestLocal = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('latestVitals') || 'null')
+      } catch { return null }
+    })()
+
+    // prepare "results" object for printing
+    const results = {
+      weight: latest?.weight ?? latestLocal?.weight ?? '—',
+      height: latest?.height ?? latestLocal?.height ?? '—',
+      heartRate: latest?.heartRate ?? latestLocal?.heartRate ?? '—',
+      spo2: latest?.spo2 ?? latestLocal?.spo2 ?? '—',
+      temperature: latest?.temperature ?? latestLocal?.temperature ?? '—',
+      bp: latest?.bloodPressure ?? latestLocal?.bp ?? latestLocal?.blood_pressure ?? '—',
+    }
+
+    // compute BMI if missing
+    const bmi = (() => {
+      if (typeof (latest?.bmi) === 'number') return latest.bmi
+      const h = Number(results.height) / 100
+      const w = Number(results.weight)
+      if (Number.isFinite(h) && h > 0 && Number.isFinite(w)) {
+        const v = w / (h * h)
+        if (Number.isFinite(v)) return Number(v.toFixed(1))
+      }
+      return latestLocal?.bmi ?? '—'
+    })()
+
+    // triage / priority (saved by the vitals page)
+    const pri = sessionStorage.getItem('last_vitals_priority') || 'NORMAL'
+    const priCode = sessionStorage.getItem('last_vitals_priority_code') || null
+    const priReasons = (() => {
+      try { return JSON.parse(sessionStorage.getItem('last_vitals_priority_reasons') || '[]') } catch { return [] }
+    })()
+
+    // queue number (fallback to last number used today)
+    const queue = (() => {
+      const raw = localStorage.getItem('queueNo')
+      if (!raw) return '—'
+      const n = Number(raw)
+      return Number.isFinite(n) ? String(n).padStart(3, '0') : '—'
+    })()
+
+    // Use backend data if available, otherwise fall back to local data
+    if (printData) {
+      return printData
+    }
+
+    // Local fallback data structure
+    return {
+      header: {
+        facility_name: "Esperanza Health Center",
+        document_type: "Vital Signs Result",
+        printed_at: new Date().toLocaleString()
+      },
+      patient_info: {
+        patient_id: patientId,
+        name: patientName,
+        age: profile?.age
+      },
+      measurements: {
+        weight: `${results.weight} kg`,
+        height: `${results.height} cm`,
+        bmi: `${bmi} kg/m²`,
+        heart_rate: `${results.heartRate} bpm`,
+        temperature: `${results.temperature} °C`,
+        oxygen_saturation: `${results.spo2} %`,
+        blood_pressure: `${results.bp} mmHg`
+      },
+      triage: {
+        priority: pri,
+        priority_code: priCode,
+        reasons: priReasons
+      },
+      queue: {
+        number: queue,
+        status: "WAITING"
+      },
+      footer: {
+        disclaimer: "This is your most recent vital signs result for personal reference. Not an official medical record.",
+        recorded_at: new Date().toLocaleString()
+      }
+    }
+  }
+
+  // ---------- UI Components ----------
   const Card = ({ label, icon, value, unit, alt }) => (
     <div className="rounded-2xl border bg-white p-5">
       <div className="flex items-center justify-between text-sm text-[#406E65]">
@@ -246,6 +361,152 @@ export default function Records() {
     </div>
   )
 
+  const EnhancedPrintTicket = () => {
+    const data = printEnhancedTicket()
+    
+    return (
+      <div id="print-root" ref={printRef} className="hidden print:block">
+        <div style={{ width: '48mm', margin: '0 auto' }}>
+          {/* Header */}
+          <div className="center mb6">
+            <div className="big">{data.header.facility_name}</div>
+            <div className="sm">{data.header.document_type}</div>
+            <div className="xs">{data.header.printed_at}</div>
+          </div>
+          
+          <div className="hr"></div>
+          
+          {/* Identity */}
+          <div className="kv mt6">
+            <div className="label">Patient ID</div>
+            <div className="val">{data.patient_info.patient_id}</div>
+            
+            <div className="label">Patient Name</div>
+            <div className="val">{data.patient_info.name}</div>
+            
+            {data.patient_info.age && (
+              <>
+                <div className="label">Age</div>
+                <div className="val">{data.patient_info.age} years</div>
+              </>
+            )}
+          </div>
+
+          <div className="hr"></div>
+
+          {/* Measurements */}
+          <div className="label">Measurements</div>
+          <div className="meas mt4">
+            <div className="label">Weight</div>
+            <div className="val">{data.measurements.weight}</div>
+            
+            <div className="label">Height</div>
+            <div className="val">{data.measurements.height}</div>
+            
+            <div className="label">BMI</div>
+            <div className="val">{data.measurements.bmi}</div>
+            
+            <div className="label">Pulse Rate</div>
+            <div className="val">{data.measurements.heart_rate}</div>
+            
+            <div className="label">SpO₂</div>
+            <div className="val">{data.measurements.oxygen_saturation}</div>
+            
+            <div className="label">Temp</div>
+            <div className="val">{data.measurements.temperature}</div>
+            
+            <div className="label">BP</div>
+            <div className="val">{data.measurements.blood_pressure}</div>
+          </div>
+
+          <div className="hr"></div>
+
+          {/* Triage Information */}
+          <div className="label">Triage Priority</div>
+          <div className="meas mt4">
+            <div className="label">Priority</div>
+            <div className="val" style={{
+              color: data.triage.priority_code === 'RED' ? '#dc2626' :
+                     data.triage.priority_code === 'ORANGE' ? '#ea580c' :
+                     data.triage.priority_code === 'YELLOW' ? '#ca8a04' : '#16a34a'
+            }}>
+              {data.triage.priority}
+            </div>
+          </div>
+          
+          {data.triage.reasons && data.triage.reasons.length > 0 && (
+            <div className="mt4">
+              <div className="label mb4">Reasons:</div>
+              {data.triage.reasons.map((reason, idx) => (
+                <div key={idx} className="xs" style={{ marginLeft: '2mm', marginBottom: '2px' }}>
+                  • {reason}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Queue Number if available */}
+          {data.queue.number !== '—' && (
+            <>
+              <div className="hr"></div>
+              <div className="center mt6">
+                <div className="label">Queue Number</div>
+                <div className="big" style={{ fontSize: '28px', marginTop: '4px' }}>
+                  {data.queue.number}
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="hr"></div>
+
+          {/* Footer */}
+          <div className="xs center mt6">
+            {data.footer.disclaimer}
+          </div>
+          
+          {data.footer.recorded_at && (
+            <div className="xs center mt4" style={{ fontSize: '8px', color: '#666' }}>
+              Recorded: {data.footer.recorded_at}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const PrintButtonSection = () => (
+    <div className="mt-8 flex items-center justify-between flex-wrap gap-2">
+      <h3 className="text-2xl font-extrabold text-[#406E65]">Your Latest Vitals</h3>
+      
+      <div className="print:hidden flex gap-2">
+        {/* Browser Print */}
+        <button 
+          onClick={printLatestFromBackend}
+          disabled={isPrinting}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-[#406E65] hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <img src={printIcon} alt="" className="h-4 w-4 object-contain" />
+          <span className="font-medium">
+            {isPrinting ? 'Preparing...' : 'Print Vitals'}
+          </span>
+        </button>
+        
+        {/* PDF Download */}
+        <button 
+          onClick={downloadPrintablePDF}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-[#406E65] hover:bg-slate-50"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span className="font-medium">Download PDF</span>
+        </button>
+      </div>
+    </div>
+  )
+
+  // ---------- Loading State ----------
   if (loading || !profile) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -261,7 +522,7 @@ export default function Records() {
 
   return (
     <section className="relative mx-auto max-w-5xl px-4 py-16">
-      {/* CSS STYLE FOR PRINTING - CHANGED IF YOU NEED TO CHANGE THE LAYOUT OR FONT OF THE RECEIPTS  */}
+      {/* CSS STYLE FOR PRINTING */}
       <style>
         {`
           @page { size: 48mm auto; margin: 3mm; }
@@ -334,14 +595,8 @@ export default function Records() {
         </div>
       </div>
 
-      {/* Latest vitals header */}
-      <div className="mt-8 flex items-center justify-between">
-        <h3 className="text-2xl font-extrabold text-[#406E65]">Your Latest Vitals</h3>
-        <button onClick={printLatest} className="print:hidden inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-[#406E65] hover:bg-slate-50">
-          <img src={printIcon} alt="" className="h-4 w-4 object-contain" />
-          <span className="font-medium">Print Vitals</span>
-        </button>
-      </div>
+      {/* Latest vitals header with enhanced buttons */}
+      <PrintButtonSection />
 
       {/* Latest vitals cards */}
       <div className="mt-4 grid gap-4 md:grid-cols-3 print:gap-2">
@@ -351,7 +606,7 @@ export default function Records() {
         <Card label="Blood Pressure" icon={bloodPressureIcon} alt="Blood Pressure" value={latest?.bloodPressure} unit="mmHg" />
         <Card label="Height" icon={heightIcon} alt="Height" value={latest?.height} unit="cm" />
         <Card label="Weight" icon={weightIcon} alt="Weight" value={latest?.weight} unit="kg" />
-        <Card label="BMI" icon={bmiIcon} alt="BMI" value={latest?.bmi ?? bmi} unit="kg/m²" />
+        <Card label="BMI" icon={bmiIcon} alt="BMI" value={latest?.bmi} unit="kg/m²" />
       </div>
 
       {/* Past vitals table */}
@@ -399,51 +654,8 @@ export default function Records() {
         </table>
       </div>
 
-      <p className="mt-4 hidden text-center text-xs text-[#406E65] print:block">
-        Printed: {new Date().toLocaleString()}
-      </p>
-
-      {/* ===================== PRINT-ONLY TICKET ===================== */}
-      <div id="print-root" ref={printRef} className="hidden print:block">
-        <div style={{ width: '48mm', margin: '0 auto' }}>
-          {/* Header */}
-          <div className="center mb6">
-            <div className="big">Esperanza Health Center</div>
-            <div className="sm">Vital Signs Result</div>
-            <div className="xs">{printedAt}</div>
-          </div>
-          
-          <div className="hr">
-          {/* Identity */}
-          <div className="kv mt6">
-            <div className="label">Patient ID</div><div className="val">{patientId}</div>
-            <div className="label">Patient Name</div><div className="val">{patientName}</div>
-          </div>
-          </div>
-
-          <div className="hr"></div>
-
-          {/* Measurements */}
-          <div className="label">Measurements</div>
-          <div className="meas mt4">
-            <div className="label">Weight</div><div className="val">{results.weight} kg</div>
-            <div className="label">Height</div><div className="val">{results.height} cm</div>
-            <div className="label">BMI</div><div className="val">{bmi} kg/m²</div>
-            <div className="label">Pulse Rate</div><div className="val">{results.heartRate} bpm</div>
-            <div className="label">SpO₂</div><div className="val">{results.spo2} %</div>
-            <div className="label">Temp</div><div className="val">{results.temperature} °C</div>
-            <div className="label">BP</div><div className="val">{results.bp} mmHg</div>
-          </div>
-
-          <div className="hr"></div>
-
-          {/* Footer */}
-          <div className="xs center mt6">
-            Here are your most recent vital signs results for your personal reference. This is not an official medical record.
-          </div>
-        </div>
-      </div>
-      {/* =================== END PRINT-ONLY TICKET =================== */}
+      {/* Enhanced Print Ticket */}
+      <EnhancedPrintTicket />
       
     </section>
   )

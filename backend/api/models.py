@@ -35,7 +35,7 @@ class Patient(models.Model):
     pin = models.CharField(max_length=255)
     fingerprint_id = models.CharField(max_length=4, null=True, blank=True, unique=True)
     last_visit = models.DateTimeField(null=True, blank=True)
-    
+        
     def set_pin(self, raw_pin):
         self.pin = make_password(raw_pin)
 

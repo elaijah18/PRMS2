@@ -13,6 +13,13 @@ from .utils import compute_patient_priority
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 from django.contrib.auth.hashers import check_password
+from django.http import HttpResponse
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from io import BytesIO
+import json
 
 
 # Create your views here.
@@ -721,3 +728,370 @@ def fingerprint_match_notification(request):
             'status': 'unknown',
             'message': 'Fingerprint not registered'
         }, status=404)
+        
+"""
+Add these functions to your views.py file
+"""
+
+@api_view(['GET', 'POST'])
+def print_patient_vitals(request, patient_id=None):
+    """
+    Generate a printable receipt-style vital signs document.
+    Can be called via GET with patient_id in URL, or POST with patient_id in body.
+    
+    Returns JSON data formatted for thermal/receipt printing.
+    For PDF output, add ?format=pdf to the URL.
+    """
+    # Get patient_id from URL param or request body
+    if request.method == 'POST':
+        patient_id = request.data.get('patient_id', patient_id)
+    
+    if not patient_id:
+        return Response(
+            {"error": "patient_id is required"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Fetch patient
+        patient = Patient.objects.get(patient_id=patient_id)
+        
+        # Get latest vitals
+        latest_vital = VitalSigns.objects.filter(
+            patient=patient
+        ).order_by('-date_time_recorded').first()
+        
+        if not latest_vital:
+            return Response(
+                {"error": "No vital signs found for this patient"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Calculate BMI
+        bmi_value = None
+        if latest_vital.height and latest_vital.weight:
+            height_m = latest_vital.height / 100
+            bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
+        
+        # Get or calculate priority
+        priority = compute_patient_priority(patient)
+        
+        # Check if patient is in queue today
+        today = timezone.now().date()
+        queue_entry = QueueEntry.objects.filter(
+            patient=patient,
+            entered_at__date=today
+        ).first()
+        
+        queue_number = None
+        if queue_entry:
+            queue_number = queue_entry.queue_number
+        
+        # Prepare print data
+        print_data = {
+            "header": {
+                "facility_name": "Esperanza Health Center",
+                "document_type": "Vital Signs Result",
+                "printed_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+            },
+            "patient_info": {
+                "patient_id": patient.patient_id,
+                "name": f"{patient.first_name} {patient.middle_name or ''} {patient.last_name}".strip(),
+                "age": None,
+                "contact": patient.contact
+            },
+            "measurements": {
+                "weight": f"{latest_vital.weight} kg" if latest_vital.weight else "—",
+                "height": f"{latest_vital.height} cm" if latest_vital.height else "—",
+                "bmi": f"{bmi_value} kg/m²" if bmi_value else "—",
+                "heart_rate": f"{latest_vital.heart_rate} bpm" if latest_vital.heart_rate else "—",
+                "temperature": f"{latest_vital.temperature} °C" if latest_vital.temperature else "—",
+                "oxygen_saturation": f"{latest_vital.oxygen_saturation} %" if latest_vital.oxygen_saturation else "—",
+                "blood_pressure": f"{latest_vital.blood_pressure} mmHg" if latest_vital.blood_pressure else "—"
+            },
+            "triage": {
+                "priority": priority,
+                "priority_code": get_priority_code(priority),
+                "reasons": get_priority_reasons(latest_vital)
+            },
+            "queue": {
+                "number": str(queue_number).zfill(3) if queue_number else "—",
+                "status": queue_entry.status if queue_entry else "NOT_IN_QUEUE"
+            },
+            "footer": {
+                "disclaimer": "This is your most recent vital signs result for personal reference. Not an official medical record.",
+                "recorded_at": latest_vital.date_time_recorded.strftime("%Y-%m-%d %H:%M:%S")
+            }
+        }
+        
+        # Calculate age if birthdate exists
+        if patient.birthdate:
+            today = timezone.now().date()
+            age = today.year - patient.birthdate.year
+            if today.month < patient.birthdate.month or (
+                today.month == patient.birthdate.month and today.day < patient.birthdate.day
+            ):
+                age -= 1
+            print_data["patient_info"]["age"] = age
+        
+        # Check if PDF format is requested
+        if request.GET.get('format') == 'pdf':
+            return generate_vitals_pdf(print_data)
+        
+        # Return JSON for thermal printer / frontend printing
+        return Response(print_data, status=status.HTTP_200_OK)
+        
+    except Patient.DoesNotExist:
+        return Response(
+            {"error": "Patient not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {"error": f"Failed to generate print data: {str(e)}"}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def get_priority_code(priority):
+    """Get color code for priority level"""
+    codes = {
+        'CRITICAL': 'RED',
+        'HIGH': 'ORANGE',
+        'MEDIUM': 'YELLOW',
+        'NORMAL': 'GREEN'
+    }
+    return codes.get(priority, 'GREEN')
+
+
+def get_priority_reasons(vital_signs):
+    """Determine reasons for priority classification"""
+    reasons = []
+    
+    if vital_signs.temperature:
+        if vital_signs.temperature >= 39:
+            reasons.append("High fever")
+        elif vital_signs.temperature <= 35:
+            reasons.append("Hypothermia")
+    
+    if vital_signs.heart_rate:
+        if vital_signs.heart_rate > 100:
+            reasons.append("Elevated heart rate")
+        elif vital_signs.heart_rate < 60:
+            reasons.append("Low heart rate")
+    
+    if vital_signs.oxygen_saturation:
+        if vital_signs.oxygen_saturation < 95:
+            reasons.append("Low oxygen saturation")
+    
+    if vital_signs.blood_pressure:
+        try:
+            sys, dia = map(int, vital_signs.blood_pressure.split('/'))
+            if sys >= 140 or dia >= 90:
+                reasons.append("High blood pressure")
+            elif sys < 90 or dia < 60:
+                reasons.append("Low blood pressure")
+        except:
+            pass
+    
+    return reasons if reasons else ["Normal vitals"]
+
+
+def generate_vitals_pdf(print_data):
+    """
+    Generate a PDF receipt for vital signs.
+    Returns a PDF file response.
+    """
+    # Create a BytesIO buffer
+    buffer = BytesIO()
+    
+    # Create PDF with receipt dimensions (48mm width)
+    width = 48 * mm
+    height = 200 * mm  # Auto-adjust based on content
+    
+    p = canvas.Canvas(buffer, pagesize=(width, height))
+    p.setTitle("Vital Signs Receipt")
+    
+    # Starting position
+    y = height - 10 * mm
+    
+    # Helper function to draw centered text
+    def draw_centered(text, y_pos, font_size=8, bold=False):
+        p.setFont("Helvetica-Bold" if bold else "Helvetica", font_size)
+        text_width = p.stringWidth(text, "Helvetica-Bold" if bold else "Helvetica", font_size)
+        x = (width - text_width) / 2
+        p.drawString(x, y_pos, text)
+        return y_pos - (font_size + 2)
+    
+    # Helper function for left-right aligned text
+    def draw_lr(label, value, y_pos, font_size=7):
+        margin = 2 * mm
+        p.setFont("Helvetica", font_size)
+        p.drawString(margin, y_pos, label)
+        
+        p.setFont("Helvetica-Bold", font_size)
+        value_width = p.stringWidth(value, "Helvetica-Bold", font_size)
+        p.drawString(width - margin - value_width, y_pos, value)
+        return y_pos - (font_size + 1.5)
+    
+    # Draw header
+    y = draw_centered("Esperanza Health Center", y, 10, bold=True)
+    y = draw_centered("Vital Signs Result", y, 7)
+    y = draw_centered(print_data["header"]["printed_at"], y - 1, 6)
+    
+    # Draw separator
+    y -= 3
+    p.line(2*mm, y, width-2*mm, y)
+    y -= 4
+    
+    # Patient info
+    patient = print_data["patient_info"]
+    y = draw_lr("Patient ID", patient["patient_id"], y)
+    y = draw_lr("Name", patient["name"][:25], y)  # Truncate if too long
+    if patient["age"]:
+        y = draw_lr("Age", f"{patient['age']} years", y)
+    
+    y -= 2
+    p.line(2*mm, y, width-2*mm, y)
+    y -= 4
+    
+    # Measurements header
+    p.setFont("Helvetica-Bold", 7)
+    p.drawString(2*mm, y, "MEASUREMENTS")
+    y -= 9
+    
+    # Draw measurements
+    measurements = print_data["measurements"]
+    y = draw_lr("Weight", measurements["weight"], y)
+    y = draw_lr("Height", measurements["height"], y)
+    y = draw_lr("BMI", measurements["bmi"], y)
+    y = draw_lr("Pulse Rate", measurements["heart_rate"], y)
+    y = draw_lr("SpO2", measurements["oxygen_saturation"], y)
+    y = draw_lr("Temperature", measurements["temperature"], y)
+    y = draw_lr("Blood Pressure", measurements["blood_pressure"], y)
+    
+    y -= 2
+    p.line(2*mm, y, width-2*mm, y)
+    y -= 4
+    
+    # Triage info
+    triage = print_data["triage"]
+    y = draw_lr("Priority", triage["priority"], y)
+    
+    if triage["reasons"]:
+        y -= 2
+        p.setFont("Helvetica", 6)
+        p.drawString(2*mm, y, "Reasons:")
+        y -= 7
+        for reason in triage["reasons"]:
+            p.drawString(4*mm, y, f"• {reason}")
+            y -= 6
+    
+    # Queue info if available
+    if print_data["queue"]["number"] != "—":
+        y -= 2
+        p.line(2*mm, y, width-2*mm, y)
+        y -= 4
+        y = draw_lr("Queue Number", print_data["queue"]["number"], y, 9)
+    
+    # Footer
+    y -= 4
+    p.line(2*mm, y, width-2*mm, y)
+    y -= 4
+    
+    # Disclaimer (wrapped text)
+    p.setFont("Helvetica", 5)
+    disclaimer = print_data["footer"]["disclaimer"]
+    words = disclaimer.split()
+    line = ""
+    for word in words:
+        test_line = line + word + " "
+        if p.stringWidth(test_line, "Helvetica", 5) < width - 4*mm:
+            line = test_line
+        else:
+            p.drawString(2*mm, y, line)
+            y -= 6
+            line = word + " "
+    if line:
+        p.drawString(2*mm, y, line)
+    
+    # Save PDF
+    p.showPage()
+    p.save()
+    
+    # Get PDF data
+    pdf_data = buffer.getvalue()
+    buffer.close()
+    
+    # Return as downloadable PDF
+    response = HttpResponse(pdf_data, content_type='application/pdf')
+    filename = f"vitals_{print_data['patient_info']['patient_id']}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
+
+
+@api_view(['POST'])
+def print_queue_ticket(request):
+    """
+    Generate a queue ticket for a patient.
+    Expects: {"patient_id": "P-20251107-001"}
+    """
+    patient_id = request.data.get('patient_id')
+    
+    if not patient_id:
+        return Response(
+            {"error": "patient_id is required"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        patient = Patient.objects.get(patient_id=patient_id)
+        
+        # Get today's queue entry
+        today = timezone.now().date()
+        queue_entry = QueueEntry.objects.filter(
+            patient=patient,
+            entered_at__date=today,
+            status__in=['WAITING', 'SERVING']
+        ).first()
+        
+        if not queue_entry:
+            return Response(
+                {"error": "No active queue entry found for today"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        ticket_data = {
+            "header": {
+                "facility_name": "Esperanza Health Center",
+                "document_type": "Queue Ticket",
+                "printed_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+            },
+            "queue": {
+                "number": str(queue_entry.queue_number).zfill(3),
+                "priority": queue_entry.priority_status,
+                "priority_code": get_priority_code(queue_entry.priority_status),
+                "entered_at": queue_entry.entered_at.strftime("%H:%M:%S")
+            },
+            "patient_info": {
+                "patient_id": patient.patient_id,
+                "name": f"{patient.first_name} {patient.last_name}"
+            },
+            "footer": {
+                "message": "Please wait for your number to be called. Thank you for your patience."
+            }
+        }
+        
+        return Response(ticket_data, status=status.HTTP_200_OK)
+        
+    except Patient.DoesNotExist:
+        return Response(
+            {"error": "Patient not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {"error": f"Failed to generate ticket: {str(e)}"}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

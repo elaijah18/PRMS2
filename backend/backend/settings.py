@@ -181,3 +181,14 @@ SESSION_COOKIE_SECURE = False  # Set to True when you use HTTPS in production
 SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
 SESSION_COOKIE_AGE = 86400  # Session expires after 24 hours (in seconds)
 SESSION_COOKIE_DOMAIN = None  # Allow cookies on both localhost and 127.0.0.1
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Optional: Configure print settings
+PRINT_CONFIG = {
+    'FACILITY_NAME': 'Esperanza Health Center',
+    'RECEIPT_WIDTH_MM': 48,  # Thermal printer width
+    'ENABLE_PDF': True,
+    'ENABLE_THERMAL': True,
+}
