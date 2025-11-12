@@ -62,7 +62,7 @@ class QueueEntrySerializer(serializers.ModelSerializer):
         fields = [
             'id', 
             'patient', 
-            'priority', 
+            'priority_status', 
             'entered_at', 
             'queue_number', 
             'status',  # Include status

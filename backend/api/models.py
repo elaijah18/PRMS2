@@ -29,13 +29,14 @@ class Patient(models.Model):
     last_name = models.CharField(max_length=50)
     sex = models.CharField(max_length=6, choices=[('Male', 'Male'), ('Female', 'Female')])
     contact = models.CharField(max_length=11, default='N/A')
-    address = models.TextField(max_length=300)
+    street = models.CharField(max_length=50, null=True, blank=True)
+    barangay = models.CharField(max_length=3, null=True, blank=True)
     username = models.CharField(max_length=20, null=True, blank=True, unique=True)
     birthdate = models.DateField(null=True, blank=True)
     pin = models.CharField(max_length=255)
     fingerprint_id = models.CharField(max_length=4, null=True, blank=True, unique=True)
     last_visit = models.DateTimeField(null=True, blank=True)
-        
+
     def set_pin(self, raw_pin):
         self.pin = make_password(raw_pin)
 
@@ -135,16 +136,16 @@ class QueueEntry(models.Model):
         self.patient.save()
         
         # Auto-compute priority on save (if not set)
-        if not self.priority:
+        if not self.priority_status:
             from .utils import compute_patient_priority
-            self.priority = compute_patient_priority(self.patient)
+            self.priority_status = compute_patient_priority(self.patient)
         
         # Assign queue number based on priority
         if not self.queue_number:
             today = timezone.now().date()
             
             # Determine if this is a priority patient
-            is_priority = self.priority in ['CRITICAL', 'HIGH', 'MEDIUM']
+            is_priority = self.priority_status in ['CRITICAL', 'HIGH', 'MEDIUM']
             
             if is_priority:
                 # Priority patients: 300-999
@@ -211,18 +212,16 @@ class ArchivedPatient(models.Model):
     last_name = models.CharField(max_length=50)
     sex = models.CharField(max_length=6)
     contact = models.CharField(max_length=11)
-    address = models.TextField(max_length=300)
+    street = models.CharField(max_length=50, null=True, blank=True)
+    barangay = models.CharField(max_length=3, null=True, blank=True)
     username = models.CharField(max_length=20, null=True, blank=True)
     birthdate = models.DateField(null=True, blank=True)
     pin = models.CharField(max_length=255)
     fingerprint_id = models.CharField(max_length=4, null=True, blank=True)
-    fingerprint_template = models.BinaryField(null=True, blank=True)
     last_visit = models.DateTimeField(null=True, blank=True)
     
     # Archive metadata
     archived_at = models.DateTimeField(auto_now_add=True)
-    archived_by = models.ForeignKey(HCStaff, on_delete=models.SET_NULL, null=True)
-    archive_reason = models.TextField(null=True, blank=True)
     original_created_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
@@ -288,7 +287,8 @@ def archive_patient(patient_id, staff=None, reason=None):
             last_name=patient.last_name,
             sex=patient.sex,
             contact=patient.contact,
-            address=patient.address,
+            street=patient.street,
+            barangay=patient.barangay,
             username=patient.username,
             birthdate=patient.birthdate,
             pin=patient.pin,
@@ -320,7 +320,7 @@ def archive_patient(patient_id, staff=None, reason=None):
         for entry in queue_entries:
             ArchivedQueueEntry.objects.create(
                 patient=archived_patient,
-                priority=entry.priority,
+                priority_status=entry.priority_status,
                 entered_at=entry.entered_at,
                 queue_number=entry.queue_number,
             )
@@ -357,7 +357,8 @@ def restore_patient(patient_id):
             last_name=archived_patient.last_name,
             sex=archived_patient.sex,
             contact=archived_patient.contact,
-            address=archived_patient.address,
+            street=patient.street,
+            barangay=patient.barangay,
             username=archived_patient.username,
             birthdate=archived_patient.birthdate,
             pin=archived_patient.pin,

@@ -54,7 +54,7 @@ export default function QueueManagement() {
 
           // Use the actual queue number from database
           queue_number: entry.queue_number || '000',
-          priority_status: (entry.priority || 'NORMAL').toUpperCase(),
+          priority_status: (entry.priority_status || 'NORMAL').toUpperCase(),
           priority_code: entry.priority_code || null,
           status: entry.status || 'WAITING',
           patientId: patient?.patient_id || '—',
