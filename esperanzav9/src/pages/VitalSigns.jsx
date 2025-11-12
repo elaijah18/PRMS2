@@ -12,7 +12,7 @@ const API_URL = 'http://localhost:8000'
 
 export default function VitalSigns() {
   const [step] = useState(3)
-  const [queue, setQueue] = useState('...')  // ✅ Will be set by backend
+  const [queue, setQueue] = useState('...')
   const [showPrinting, setShowPrinting] = useState(false)
   const [showFinished, setShowFinished] = useState(false)
   const [priority, setPriority] = useState('NORMAL')
@@ -53,9 +53,6 @@ export default function VitalSigns() {
     return Number.isFinite(val) ? val.toFixed(1) : '0.0'
   }, [results.height, results.weight])
 
-  // ✅ REMOVED: Local queue number generation
-  // The backend will assign the queue number based on priority
-
   const savedRef = useRef(false)
   useEffect(() => {
     if (step !== 3 || savedRef.current) return
@@ -95,7 +92,6 @@ export default function VitalSigns() {
       sessionStorage.removeItem('last_vitals_priority_reasons')
     }
 
-    // ✅ SEND TO BACKEND AND GET QUEUE NUMBER
     const send = async () => {
       try {
         const patient_id = sessionStorage.getItem('patient_id') || profile?.patientId || null
@@ -105,7 +101,6 @@ export default function VitalSigns() {
           return
         }
 
-        // First, send vitals data
         const vitalsPayload = {
           patient_id,
           heart_rate: Number(results.heartRate) || null,
@@ -128,7 +123,6 @@ export default function VitalSigns() {
           return
         }
 
-        // ✅ Now fetch the queue entry to get the assigned queue number
         const queueRes = await fetch(`${API_URL}/queue/current_queue/`, {
           credentials: 'include',
         })
@@ -136,27 +130,22 @@ export default function VitalSigns() {
         if (queueRes.ok) {
           const queueData = await queueRes.json()
           
-          // Find this patient's queue entry
           const myEntry = queueData.find(entry => 
             entry.patient?.patient_id === patient_id
           )
 
           if (myEntry) {
-            // ✅ Use the queue number from database
             const queueNum = myEntry.queue_number || '000'
             setQueue(queueNum)
             
-            // Store for later use
             sessionStorage.setItem('current_queue_number', queueNum)
             
-            // Update priority from backend if available
             if (myEntry.priority) {
               const backendPriority = myEntry.priority.toUpperCase()
               setPriority(backendPriority)
               sessionStorage.setItem('last_vitals_priority', backendPriority)
             }
 
-            // Save to history with correct queue number
             const record = {
               id: `${new Date().toISOString()}-${queueNum}`,
               date: new Date().toISOString().slice(0, 10),
@@ -187,17 +176,46 @@ export default function VitalSigns() {
     savedRef.current = true
   }, [step, results, bmi, profile])
 
-  const handlePrint = () => {
-    setShowPrinting(true)
-    setTimeout(() => {
-      window.print()
+  // ✅ NEW: POS58 Thermal Printer Function (same approach as Records.jsx)
+  const handlePrintToPOS58 = async () => {
+    try {
+      setShowPrinting(true)
+      
+      const patientId = profile?.patientId || sessionStorage.getItem('patient_id')
+      
+      if (!patientId) {
+        alert('Patient ID not found. Please refresh and try again.')
+        setShowPrinting(false)
+        return
+      }
+
+      const res = await fetch(`${API_URL}/print-pos58/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ patient_id: patientId }),
+      })
+
+      const data = await res.json()
+      
+      if (res.ok) {
+        // Show success and then the finished dialog
+        setTimeout(() => {
+          setShowPrinting(false)
+          setShowFinished(true)
+        }, 800)
+      } else {
+        alert('⚠️ Print failed: ' + data.error)
+        setShowPrinting(false)
+      }
+    } catch (err) {
+      console.error('POS58 print error:', err)
+      alert('Failed to send print command to printer.')
       setShowPrinting(false)
-      setShowFinished(true)
-    }, 800)
+    }
   }
 
   const pri = sessionStorage.getItem('last_vitals_priority') || priority || 'NORMAL'
-  const priCode = priorityCode
   const priReasons = (() => {
     try {
       return JSON.parse(sessionStorage.getItem('last_vitals_priority_reasons') || '[]')
@@ -206,12 +224,6 @@ export default function VitalSigns() {
     }
   })()
   const displayQueueNumber = queue
-
-  const printRef = useRef(null)
-  const patientId = profile?.patientId ?? (sessionStorage.getItem('patient_id') || '—')
-  const patientName = profile?.name ?? (sessionStorage.getItem('patient_name') || '—')
-  const now = new Date()
-  const printedAt = `${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
 
   const Stat = ({ label, value, unit }) => (
     <div className="rounded-3xl bg-white/90 backdrop-blur border border-[#6ec1af] shadow-[0_8px_24px_rgba(16,185,129,.15)] hover:shadow-[0_12px_28px_rgba(15,23,42,.22)] transition-shadow p-6 flex flex-col items-center text-center">
@@ -223,59 +235,6 @@ export default function VitalSigns() {
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-16">
-      <style>
-        {`
-          @page { size: 48mm auto; margin: 3mm; }
-          @media print {
-            body * { visibility: hidden !important; }
-            #print-root, #print-root * { visibility: visible !important; }
-            #print-root { position: absolute; inset: 0; width: 100%; }
-          }
-          #print-root {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          #print-root .hr { border-top: 1px dashed #000; margin: 6px 0; }
-          #print-root .sm { font-size: 11px; }
-          #print-root .xs { font-size: 10px; }
-          #print-root .label { font-size: 10px; text-transform: uppercase; letter-spacing: .2px; color: #000; }
-          #print-root .val { font-size: 10px; font-weight: 700; }
-          #print-root .big { font-size: 22px; font-weight: 900; letter-spacing: 1px; }
-          #print-root .qbox {
-            border: 2px solid #000;
-            border-radius: 4px;
-            padding: 6px 0;
-            text-align: center;
-            margin: 4px 0 2px 0;
-          }
-          #print-root .kv {
-            display: grid;
-            grid-template-columns: 26mm 1fr;
-            row-gap: 2px;
-          }
-          #print-root .meas {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            row-gap: 2px;
-          }
-          #print-root .prio {
-            display: inline-block;
-            border: 1px solid #000;
-            padding: 1px 4px;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-          }
-          #print-root .center { text-align: center; }
-          #print-root .mt4 { margin-top: 4px; }
-          #print-root .mt6 { margin-top: 6px; }
-          #print-root .mb4 { margin-bottom: 4px; }
-          #print-root .mb6 { margin-bottom: 6px; }
-        `}
-      </style>
-
       <h2 className="text-3xl md:text-5xl font-extrabold text-center bg-gradient-to-r from-emerald-700 via-teal-600 to-slate-700 bg-clip-text text-transparent leading-tight">
         Vitals Capture Complete!
       </h2>
@@ -321,8 +280,9 @@ export default function VitalSigns() {
             >
               Go to Records
             </Link>
+            {/* ✅ UPDATED: Print button now uses POS58 thermal printer */}
             <button
-              onClick={handlePrint}
+              onClick={handlePrintToPOS58}
               className="rounded-xl border border-slate-300 hover:bg-slate-50 px-5 py-3 font-semibold text-[#406E65] inline-flex items-center gap-2"
             >
               <img src={printIcon} alt="" className="h-4 w-4 object-contain" />
@@ -335,7 +295,7 @@ export default function VitalSigns() {
       {showPrinting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl p-6 text-center">
-            <p className="text-xl font-bold text-emerald-700">Printing...</p>
+            <p className="text-xl font-bold text-emerald-700">Printing to POS58...</p>
           </div>
         </div>
       )}
@@ -344,7 +304,10 @@ export default function VitalSigns() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl p-6 text-center max-w-sm">
             <p className="text-lg font-semibold text-slate-800">
-              Please get your printed results and queuing number below.
+              ✅ Results printed successfully!
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              Please get your printed results and queuing number from the printer.
             </p>
             <button
               onClick={() => nav('/records')}
@@ -380,63 +343,6 @@ export default function VitalSigns() {
           </div>
         </div>
       )}
-
-      <div id="print-root" ref={printRef} className="hidden print:block">
-        <div style={{ width: '48mm', margin: '0 auto' }}>
-          <div className="center mb6">
-            <div className="big">Esperanza Health Center</div>
-            <div className="sm">Vital Signs Result</div>
-            <div className="xs">{printedAt}</div>
-          </div>
-
-          <div className="hr"></div>
-
-          <div className="center">
-            <div className="label">Queue No.</div>
-            <div className="qbox big">{queue}</div>
-            <div className="mt4">
-              <span className="label">Priority:&nbsp;</span>
-              {parseInt(queue) >= 300
-                ? <span className="prio">Priority</span>
-                : <span className="val">Normal</span>}
-            </div>
-          </div>
-
-          <div className="kv mt6">
-            <div className="label">Patient ID</div><div className="val">{patientId}</div>
-            <div className="label">Patient Name</div><div className="val">{patientName}</div>
-          </div>
-
-          {parseInt(queue) >= 300 && priReasons?.length > 0 && (
-            <>
-              <div className="hr"></div>
-              <div className="label mb4">Priority Reasons</div>
-              <ul className="xs" style={{ margin: 0, paddingLeft: 14 }}>
-                {priReasons.map((r, i) => <li key={i}>{r}</li>)}
-              </ul>
-            </>
-          )}
-
-          <div className="hr"></div>
-
-          <div className="label">Measurements</div>
-          <div className="meas mt4">
-            <div className="label">Weight</div><div className="val">{results.weight} kg</div>
-            <div className="label">Height</div><div className="val">{results.height} cm</div>
-            <div className="label">BMI</div><div className="val">{bmi} kg/m²</div>
-            <div className="label">Pulse Rate</div><div className="val">{results.heartRate} bpm</div>
-            <div className="label">SpO₂</div><div className="val">{results.spo2} %</div>
-            <div className="label">Temp</div><div className="val">{results.temperature} °C</div>
-            <div className="label">BP</div><div className="val">{results.bp} mmHg</div>
-          </div>
-
-          <div className="hr"></div>
-
-          <div className="xs center mt6">
-            For check-up and consultation, please proceed to the clinic area once your queuing number has been called.
-          </div>
-        </div>
-      </div>
     </section>
   )
 }
