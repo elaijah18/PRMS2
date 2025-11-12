@@ -197,7 +197,7 @@ def receive_vital_signs(request):
             # Add to queue
             QueueEntry.objects.create(
                 patient=patient,
-                priority=priority,
+                priority_status=priority,
                 entered_at=timezone.now()
             )
         

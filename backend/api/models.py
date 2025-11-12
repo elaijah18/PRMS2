@@ -34,7 +34,6 @@ class Patient(models.Model):
     birthdate = models.DateField(null=True, blank=True)
     pin = models.CharField(max_length=255)
     fingerprint_id = models.CharField(max_length=4, null=True, blank=True, unique=True)
-    fingerprint_template = models.BinaryField(null=True, blank=True)
     last_visit = models.DateTimeField(null=True, blank=True)
     
     def set_pin(self, raw_pin):
@@ -121,7 +120,7 @@ class QueueEntry(models.Model):
     ]
     
     patient = models.ForeignKey('Patient', on_delete=models.CASCADE, related_name='queue_entries')
-    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, null=True, blank=True)
+    priority_status = models.CharField(max_length=10, choices=PRIORITY_CHOICES, null=True, blank=True)
     entered_at = models.DateTimeField(default=timezone.now)
     queue_number = models.CharField(max_length=10, null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='WAITING')
@@ -254,7 +253,7 @@ class ArchivedVitalSigns(models.Model):
 class ArchivedQueueEntry(models.Model):
     patient = models.ForeignKey(ArchivedPatient, on_delete=models.CASCADE, related_name='queue_entries')
     
-    priority = models.CharField(max_length=10)
+    priority_status = models.CharField(max_length=10)
     entered_at = models.DateTimeField()
     queue_number = models.CharField(max_length=10)
     
