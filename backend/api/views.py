@@ -998,9 +998,9 @@ class QueueViewSet(viewsets.ModelViewSet):
             status='WAITING'  # Only show waiting patients
         ).select_related('patient').annotate(
             priority_order=Case(
-                When(priority='CRITICAL', then=1),
-                When(priority='HIGH', then=2),
-                When(priority='MEDIUM', then=3),
+                When(priority_status='CRITICAL', then=1),
+                When(priority_status='HIGH', then=2),
+                When(priority_status='MEDIUM', then=3),
                 default=4,
                 output_field=IntegerField()
             )

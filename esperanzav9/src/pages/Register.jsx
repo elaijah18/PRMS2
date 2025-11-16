@@ -94,7 +94,9 @@ export default function Register() {
       sex,
       birthdate: dob,
       contact: phone.trim(),
-      address: `${address.street}, ${address.barangay}, ${address.city}, ${address.region}, ${address.country}`,
+      street: address.street.trim(),
+      barangay: address.barangay.trim(),
+      // address: `${address.street}, ${address.barangay}, ${address.city}, ${address.region}, ${address.country}`,
       username: username.trim(),
       pin
     }
@@ -280,7 +282,7 @@ export default function Register() {
                     >
                       <option value="">Select Barangay</option>
                       {Array.from({ length: 648 - 587 + 1 }, (_, i) => 587 + i).map(brgy => (
-                        <option key={brgy} value={`Barangay ${brgy}`}>
+                        <option key={brgy} value={brgy}>
                           Barangay {brgy}
                         </option>
                       ))}

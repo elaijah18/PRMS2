@@ -257,6 +257,54 @@ export default function PatientRecords() {
       nav('/staff/patient-records', { replace: true })
     }
   }
+  
+  const handleArchiveClick = (patientId) => {
+    setPatientToArchive(patientId)
+    setShowArchiveModal(true)
+  }
+
+  const cancelArchive = () => {
+    setShowArchiveModal(false)
+    setPatientToArchive(null)
+  }
+
+  const confirmArchive = async () => {
+    if (!patientToArchive) return
+    
+    try {
+      const res = await fetch(`http://localhost:8000/archive-patient/${patientToArchive}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          reason: 'Archived via Patient Records page'
+        })
+      })
+      
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || 'Failed to archive patient')
+      }
+      
+      alert('Patient archived successfully')
+      setShowArchiveModal(false)
+      setPatientToArchive(null)
+      
+      // Refresh the patient list
+      const currentSearch = searchParams.get('q') || ''
+      fetchPatients(currentSearch)
+      
+      // Clear current patient if it was the one archived
+      if (currentPatient?.patient_id === patientToArchive) {
+        setCurrentPatient(null)
+        setEditing(false)
+        nav('/staff/patient-records', { replace: true })
+      }
+    } catch (err) {
+      console.error('Failed to archive:', err)
+      alert(`Failed to archive patient: ${err.message}`)
+    }
+  }
 
   const startEditing = (patient) => {
     const patientToEdit = {
