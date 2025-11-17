@@ -1722,27 +1722,29 @@ def print_to_pos58(request):
     
 
 '''API FOR PRINTING VITALS WITH QUEUE TO THERMAL PRINTER'''
+from rest_framework.request import Request as DRFRequest
+
 @api_view(['POST'])
 def print_vitals_pos58(request):
     """
     POS58 printer output for patient vitals with queue info.
     """
-    patient_id = request.data.get("patient_id")
+
+    # ✅ FIX: Convert DRF Request to Django HttpRequest
+    if isinstance(request, DRFRequest):
+        request = request._request
+
+    patient_id = request.POST.get("patient_id") or request.GET.get("patient_id")
     if not patient_id:
         return Response({"error": "patient_id required"}, status=400)
 
     try:
-        # Load the same data structure used by frontend
-        # Create a copy of request to avoid modifying original
-        from django.http import QueryDict
-        
-        # Call print_patient_vitals to get formatted data
+        # Now this will NOT throw "request must be HttpRequest"
         response = print_patient_vitals(request, patient_id)
-        
-        # Check if the response was successful
+
         if response.status_code != 200:
             return Response({"error": "Failed to fetch patient vitals"}, status=response.status_code)
-        
+
         data = response.data
 
         header = data.get("header", {})
@@ -1751,59 +1753,45 @@ def print_vitals_pos58(request):
         triage = data.get("triage", {})
         queue = data.get("queue", {})
 
-        # Build reasons list
         reasons_block = ""
         if triage.get("priority") != "NORMAL" and triage.get("reasons"):
             reasons_block = "\nPriority Reasons:\n"
             for r in triage["reasons"]:
                 reasons_block += f" - {r}\n"
 
-        # ===== 58MM RECEIPT FORMAT (VitalSigns.jsx layout) =====
         txt = []
         txt.append("      ESPERANZA HC")
         txt.append("   Vital Signs Result")
         txt.append(f"   {header.get('printed_at', '')}")
         txt.append("--------------------------------")
-
-        # Queue + Priority
         txt.append(f"QUEUE NO: {queue.get('number', '—')}")
         if triage.get("priority") != "NORMAL":
-            priority_code = triage.get('priority_code', '')
-            txt.append(f"PRIORITY: {triage.get('priority', 'NORMAL')} {priority_code}")
+            txt.append(f"PRIORITY: {triage.get('priority','NORMAL')} {triage.get('priority_code','')}")
         else:
             txt.append("PRIORITY: NORMAL")
         txt.append("--------------------------------")
-
-        # Patient identity
-        txt.append(f"Patient ID: {patient.get('patient_id', '—')}")
-        txt.append(f"Name: {patient.get('name', '—')}")
-        txt.append(f"Age: {patient.get('age', '—')}")
+        txt.append(f"Patient ID: {patient.get('patient_id','—')}")
+        txt.append(f"Name: {patient.get('name','—')}")
+        txt.append(f"Age: {patient.get('age','—')}")
         txt.append("--------------------------------")
 
-        # Priority reasons
         if reasons_block:
             txt.append(reasons_block.strip())
             txt.append("--------------------------------")
 
-        # Measurements
         txt.append("Measurements:")
-        txt.append(f" Weight: {meas.get('weight', '—')}")
-        txt.append(f" Height: {meas.get('height', '—')}")
-        txt.append(f" BMI: {meas.get('bmi', '—')}")
-        txt.append(f" Heart Rate: {meas.get('heart_rate', '—')}")
-        txt.append(f" SpO2: {meas.get('oxygen_saturation', '—')}")
-        txt.append(f" Temp: {meas.get('temperature', '—')}")
-        txt.append(f" BP: {meas.get('blood_pressure', '—')}")
+        txt.append(f" Weight: {meas.get('weight','—')}")
+        txt.append(f" Height: {meas.get('height','—')}")
+        txt.append(f" BMI: {meas.get('bmi','—')}")
+        txt.append(f" HR: {meas.get('heart_rate','—')}")
+        txt.append(f" SpO2: {meas.get('oxygen_saturation','—')}")
+        txt.append(f" Temp: {meas.get('temperature','—')}")
+        txt.append(f" BP: {meas.get('blood_pressure','—')}")
         txt.append("--------------------------------")
-
-        txt.append("For check-up and consultation,")
-        txt.append("please proceed to the clinic area")
-        txt.append("once your number is called.")
         txt.append("\n\n\n")
 
         final_text = "\n".join(txt)
 
-        # Send to printer
         PRINTER_PATH = "/dev/usb/lp0"
         try:
             with open(PRINTER_PATH, "w") as printer:
@@ -1812,7 +1800,5 @@ def print_vitals_pos58(request):
         except IOError as e:
             return Response({"error": f"Printer error: {str(e)}"}, status=500)
 
-    except Patient.DoesNotExist:
-        return Response({"error": "Patient not found"}, status=404)
     except Exception as e:
         return Response({"error": f"Print error: {str(e)}"}, status=500)

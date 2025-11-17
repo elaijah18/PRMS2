@@ -299,7 +299,7 @@ export default function PatientRecords() {
         throw new Error(errorData.error || 'Failed to archive patient')
       }
       
-      alert('Patient archived successfully')
+      setPopupMsg('Patient archived successfully')
       setShowArchiveModal(false)
       setPatientToArchive(null)
       
@@ -315,7 +315,7 @@ export default function PatientRecords() {
       }
     } catch (err) {
       console.error('Failed to archive:', err)
-      alert(`Failed to archive patient: ${err.message}`)
+      setPopupMsg(`Failed to archive patient: ${err.message}`)
     }
   }
 
@@ -458,7 +458,7 @@ export default function PatientRecords() {
                           <input
                             value={currentPatient.first_name || ''}
                             onChange={(e) =>
-                              setCurrentPatient({ ...currentPatient, first_name: e.target.value })
+                              setCurrentPatient({ ...currentPatient, first_name: e.target.value.replace(/[^A-Za-z ]/g, '') })
                             }
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
@@ -470,7 +470,7 @@ export default function PatientRecords() {
                           <input
                             value={currentPatient.middle_name || ''}
                             onChange={(e) =>
-                              setCurrentPatient({ ...currentPatient, middle_name: e.target.value })
+                              setCurrentPatient({ ...currentPatient, middle_name: e.target.value.replace(/[^A-Za-z ]/g, '') })
                             }
                             maxLength={50}
                             placeholder="Optional"
@@ -486,7 +486,7 @@ export default function PatientRecords() {
                           <input
                             value={currentPatient.last_name || ''}
                             onChange={(e) =>
-                              setCurrentPatient({ ...currentPatient, last_name: e.target.value })
+                              setCurrentPatient({ ...currentPatient, last_name: e.target.value.replace(/[^A-Za-z ]/g, '') })
                             }
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
@@ -541,7 +541,7 @@ export default function PatientRecords() {
                           <input
                             value={currentPatient.contact || ''}
                             onChange={(e) =>
-                              setCurrentPatient({ ...currentPatient, contact: e.target.value })
+                              setCurrentPatient({ ...currentPatient, contact: e.target.value.replace(/\D/g, '').slice(0, 11) })
                             }
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
@@ -592,11 +592,32 @@ export default function PatientRecords() {
                     <label className="min-w-[10rem] font-semibold">BP (mmHg)</label>
                     <input
                       value={bpInput}
-                      onChange={(e) => setBpInput(e.target.value)}
+                      onChange={(e) => {
+                        let value = e.target.value;
+
+                        // Remove all characters except digits and slash
+                        value = value.replace(/[^\d/]/g, "");
+
+                        // Prevent more than ONE slash
+                        const parts = value.split("/");
+                        if (parts.length > 2) return;
+
+                        // Limit systolic (before slash) to 3 digits
+                        if (parts[0].length > 3) parts[0] = parts[0].slice(0, 3);
+
+                        // Limit diastolic (after slash) to 2 digits
+                        if (parts[1]?.length > 2) parts[1] = parts[1].slice(0, 2);
+
+                        // Combine back
+                        value = parts.join("/");
+
+                        setBpInput(value);
+                      }}
                       placeholder="e.g. 120/80"
                       className="rounded-lg border px-3 py-2 bg-white flex-1"
                       style={{ borderColor: BRAND.border }}
                     />
+
                     <button
                       type="button"
                       onClick={saveBp}

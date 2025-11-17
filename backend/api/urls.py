@@ -62,7 +62,7 @@ urlpatterns = [ # endpoints
     path('print-queue-ticket/', print_queue_ticket, name='print_queue_ticket'),
 
     path("print-pos58/", print_to_pos58, name='print_to_pos58'),
-    path('print-vitals-pos58/', views.print_vitals_pos58, name='print_vitals_pos58')
+    path('print-vitals-pos58/', print_vitals_pos58, name='print_vitals_pos58')
 ]
 
 
