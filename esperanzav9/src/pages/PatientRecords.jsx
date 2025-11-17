@@ -237,11 +237,12 @@ export default function PatientRecords() {
     if (!bpInput.trim() || !currentPatient) return
     
     try {
-      const res = await fetch(`http://localhost:8000/patients/${currentPatient.patient_id}/vitals/`, {
+      const res = await fetch(`http://localhost:8000/receive-vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          patient_id: currentPatient.patient_id,
           blood_pressure: bpInput.trim(),
           date: new Date().toISOString().split('T')[0],
         }),

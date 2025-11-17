@@ -1116,7 +1116,6 @@ def get_all_patients(request):
             Q(last_name__icontains=search_term) | 
             Q(street__icontains=search_term) | 
             Q(barangay__icontains=search_term) | 
-            
             Q(patient_id__icontains=search_term)
         )
     
