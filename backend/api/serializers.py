@@ -1,4 +1,4 @@
-from .models import Patient, QueueEntry, VitalSigns
+from .models import Patient, QueueEntry, VitalSigns, HCStaff
 from rest_framework import serializers
 import re 
 from datetime import date
@@ -47,7 +47,26 @@ class PatientSerializer(serializers.ModelSerializer):
             validated_data.pop('pin', None)
 
         return super().update(instance, validated_data)
-    
+
+# SERIALIZER FOR HC STAFF, ADDED DAHIL NEED DAW
+class HCStaffSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HCStaff
+        fields = "__all__"
+        extra_kwargs = {
+            "staff_pin": {"write_only": True},
+        }
+
+    def validate_staff_pin(self, value):
+        if value.startswith("pbkdf2_"):
+            return value
+
+        if not value.isdigit() or len(value) != 4:
+            raise serializers.ValidationError("PIN must be exactly 4 digits.")
+
+        return make_password(value)
+
+
 class VitalSignsSerializer(serializers.ModelSerializer): 
     class Meta:
         model = VitalSigns
@@ -107,3 +126,4 @@ class QueueEntrySerializer(serializers.ModelSerializer):
             'weight': latest_vital.weight,
             'bmi': bmi_value
         }
+    

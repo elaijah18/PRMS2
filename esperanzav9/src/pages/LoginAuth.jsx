@@ -9,6 +9,7 @@ import pinIcon from '../assets/dialpadalt.png'
 import fingerprintIcon from '../assets/fingerprint.png'
 import showPinIcon from '../assets/show.png'
 import hidePinIcon from '../assets/hide.png'
+import Popup from '../components/ErrorPopup'
 
 export default function LoginAuth() {
   const { state } = useLocation()
@@ -21,12 +22,14 @@ export default function LoginAuth() {
   const [username, setUsername] = useState('')
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [showPin, setShowPin] = useState(false)
-
+  const [popupMsg, setPopupMsg] = useState('')
 
   const authenticateUser = async (enteredPin, loginType) => {
     if (isAuthenticating) return
-    if (loginType === 'patient' && username.trim().length === 0) {
-      alert('Please enter your username.')
+
+    // REQUIRE username for both patient AND staff
+    if (username.trim().length === 0) {
+      setPopupMsg('Please enter your username.')
       return
     }
 
@@ -40,7 +43,7 @@ export default function LoginAuth() {
         body: JSON.stringify({
           pin: enteredPin,
           login_type: loginType,
-          ...(loginType === 'patient' && { username: username.trim() }),
+          username: username.trim(),   
         }),
       })
 
@@ -61,10 +64,11 @@ export default function LoginAuth() {
         sessionStorage.setItem('staffName', userData.name)
         sessionStorage.setItem('isAuthenticated', 'true')
         sessionStorage.setItem('userRole', 'staff')
+        sessionStorage.setItem('staff_id', userData.staff_id)
         nav('/staff')
       }
     } catch (err) {
-      alert(err.message || 'Authentication failed')
+      setPopupMsg(err.message || 'Authentication failed')
       setPin('')
     } finally {
       setIsAuthenticating(false)
@@ -101,8 +105,8 @@ export default function LoginAuth() {
     'group rounded-3xl bg-[#6ec1af] hover:bg-emerald-800/70 transition-all ' +
     'border border-emerald-500/60 shadow-lg hover:shadow-xl overflow-hidden px-6 py-10'
 
-  const pinReady =
-    role === 'staff' ? pin.length === 4 : username.trim() && pin.length === 4
+  // REQUIRE username in both staff & patient
+  const pinReady = username.trim() && pin.length === 4
 
   return (
     <section className="mx-auto max-w-5xl px-4 pt-20 pb-16">
@@ -148,57 +152,55 @@ export default function LoginAuth() {
       {mode === 'pin' && (
         <div className="mt-10 grid md:grid-cols-[1fr_auto] gap-8 items-start">
           <div className="card">
-            {role === 'patient' && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-700">
-                  Username
-                </label>
-                <input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your username"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
-                  autoComplete="username"
-                />
-              </div>
-            )}
+
+            {/* Username for BOTH patient and staff */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700">
+                Username
+              </label>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter your username"
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
+                autoComplete="username"
+              />
+            </div>
 
             <label className="block text-sm font-medium text-slate-700">
               4-Digit PIN
             </label>
 
-            {/* PIN with conceal/reveal toggle*/}
+            {/* PIN with conceal/reveal toggle */}
             <div className="relative mt-2">
-            <input
-              type={showPin ? 'text' : 'password'}
-              value={pin}
-              readOnly
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 pr-12 text-2xl tracking-widest text-center bg-white"
-              inputMode="numeric"
-              autoComplete="current-password"
-              aria-label="4-digit PIN"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPin((s) => !s)}
-              disabled={isAuthenticating}
-              className="absolute inset-y-0 right-2 my-auto h-9 w-9 grid place-items-center rounded-md hover:bg-slate-100"
-              aria-label={showPin ? 'Hide PIN' : 'Show PIN'}
-              title={showPin ? 'Hide PIN' : 'Show PIN'}
-            >
-              <img
-              src={showPin ? hidePinIcon : showPinIcon}
-              alt={showPin ? 'Hide PIN' : 'Show PIN'}
-              className="h-5 w-5 object-contain select-none pointer-events-none"
-            />
-            </button>
-          </div>
+              <input
+                type={showPin ? 'text' : 'password'}
+                value={pin}
+                readOnly
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 pr-12 text-2xl tracking-widest text-center bg-white"
+                inputMode="numeric"
+                autoComplete="current-password"
+                aria-label="4-digit PIN"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPin((s) => !s)}
+                disabled={isAuthenticating}
+                className="absolute inset-y-0 right-2 my-auto h-9 w-9 grid place-items-center rounded-md hover:bg-slate-100"
+                aria-label={showPin ? 'Hide PIN' : 'Show PIN'}
+                title={showPin ? 'Hide PIN' : 'Show PIN'}
+              >
+                <img
+                  src={showPin ? hidePinIcon : showPinIcon}
+                  alt={showPin ? 'Hide PIN' : 'Show PIN'}
+                  className="h-5 w-5 object-contain select-none pointer-events-none"
+                />
+              </button>
+            </div>
 
             <p className="mt-2 text-xs text-slate-500" aria-live="polite">
               {pinReady
                 ? 'Press Enter on the keypad to continue.'
-                : role === 'staff'
-                ? 'Enter your 4-digit PIN.'
                 : 'Enter your username and 4-digit PIN.'}
             </p>
           </div>
@@ -212,6 +214,7 @@ export default function LoginAuth() {
           <FingerprintScanner onComplete={onFpDone} />
         </div>
       )}
+      {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

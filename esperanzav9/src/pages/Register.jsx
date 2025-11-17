@@ -8,15 +8,19 @@ import bgRegister from '../assets/bgreg.png'
 import fingerPrint from '../assets/fingerprint-sensor.png'
 import showPinIcon from '../assets/show.png'
 import hidePinIcon from '../assets/hide.png'
+import Popup from '../components/ErrorPopup'
+
 
 const months = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December'
 ]
 
+
 export default function Register() {
   const nav = useNavigate()
   const [creating, setCreating] = useState(false)
+  const [popupMsg, setPopupMsg] = useState('');
 
   // Name fields
   const [first_name, setFirstName] = useState('')
@@ -77,11 +81,11 @@ export default function Register() {
     e.preventDefault()
 
     if (requireFingerprint && fpStatus !== 'enrolled') {
-      alert('Please capture fingerprint before registering.')
+      setPopupMsg('Please capture fingerprint before registering.')
       return
     }
     if (!first_name.trim() || !last_name.trim()) {
-      alert('Please enter first and last name.')
+      setPopupMsg('Please enter first and last name.')
       return
     }
 
@@ -110,10 +114,11 @@ export default function Register() {
 
       if (!registerRes.ok) {
         const err = await registerRes.json().catch(() => ({}))
-        alert("Failed to register patient:\n" + JSON.stringify(err, null, 2))
+        const message = err.username?.[0] || err.username || err.error || err.detail || err.message || "Failed to register patient"
+        setPopupMsg(message.charAt(0).toUpperCase() + message.slice(1))
         setCreating(false)
         return
-      }
+      } 
 
       // Auto-login
       const loginRes = await fetch('http://localhost:8000/login/', {
@@ -128,7 +133,7 @@ export default function Register() {
       })
 
       if (!loginRes.ok) {
-        alert("Registration successful but login failed. Please login manually.")
+        setPopupMsg("Registration successful but login failed. Please login manually.")
         setCreating(false)
         nav('/login')
         return
@@ -146,7 +151,7 @@ export default function Register() {
       setCreating(false)
       nav('/vitals/weight', { state: { afterCaptureGoTo: '/records' } })
     } catch (err) {
-      alert("Network error: " + (err?.message || err))
+      setPopupMsg("Network error. Please try again.");
       setCreating(false)
     }
   }
@@ -171,7 +176,7 @@ export default function Register() {
                 <label className="text-sm font-semibold text-slate-700">First Name</label>
                 <input
                   value={first_name}
-                  onChange={e=>setFirstName(e.target.value)}
+                  onChange={e => setFirstName(e.target.value.replace(/[^A-Za-z ]/g, ''))}
                   required
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
                 />
@@ -180,8 +185,7 @@ export default function Register() {
                 <label className="text-sm font-semibold text-slate-700">Middle Name</label>
                 <input
                   value={middle_name}
-                  onChange={e=>{setMiddleName(e.target.value)
-                  }}
+                  onChange={e => setMiddleName(e.target.value.replace(/[^A-Za-z ]/g, ''))}
                   placeholder="(optional)"
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
                 />
@@ -190,7 +194,7 @@ export default function Register() {
                 <label className="text-sm font-semibold text-slate-700">Last Name</label>
                 <input
                   value={last_name}
-                  onChange={e=>setLastName(e.target.value)}
+                  onChange={e => setLastName(e.target.value.replace(/[^A-Za-z ]/g, ''))}                
                   required
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
                 />
@@ -247,7 +251,7 @@ export default function Register() {
                 <label className="text-sm font-semibold text-slate-700">Phone Number</label>
                 <input
                   value={phone}
-                  onChange={e => setPhone(e.target.value)}
+                  onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
                   required
                   className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5"
                 />
@@ -272,20 +276,24 @@ export default function Register() {
 
                   {/* Barangay */}
                   <div>
-                    <select
-                      value={address.barangay}
-                      onChange={e => setAddress({ ...address, barangay: e.target.value })}
-                      className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                      required
-                    >
-                      <option value="">Select Barangay</option>
-                      {Array.from({ length: 648 - 587 + 1 }, (_, i) => 587 + i).map(brgy => (
-                        <option key={brgy} value={`Barangay ${brgy}`}>
-                          Barangay {brgy}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <select
+                    value={address.barangay}
+                    onChange={e => setAddress({ ...address, barangay: e.target.value })}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                    required
+                  >
+                    <option value="">Select Brgy.</option>
+
+                    <option value="3">Brgy. 587A</option>
+
+                    {/* Existing generated options */}
+                    {Array.from({ length: 648 - 587 + 1 }, (_, i) => 587 + i).map(brgy => (
+                      <option key={brgy} value={brgy - 586}>
+                        Brgy. {brgy}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                   {/* City / Region / Country on same row */}
                   <div className="grid grid-cols-3 gap-4 col-span-2">
@@ -419,6 +427,7 @@ export default function Register() {
           </aside>
         </div>
       </div>
+      {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

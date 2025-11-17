@@ -1,64 +1,54 @@
-// Height.jsx — revised
+// Height.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
 import ResultCard from '../../components/ResultCard';
-import { initModalDelay, SESSION_KEYS } from './utils';
 import HeightImg from '../../assets/height2.png';
+import { SESSION_KEYS, initModalDelay } from './utils';
 
 export default function Height() {
   const nav = useNavigate();
-  const [value, setValue] = useState(null);
+  const [height, setHeight] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [showInit, setShowInit] = useState(false);
-  const API_BASE = 'http://localhost:8000';
+  const [error, setError] = useState('');
 
-  const start = () => {
+  const API_BASE = 'http://localhost:8000/api';
+
+  const handleStart = async () => {
+    setLoading(true);
     setShowInit(true);
-    setTimeout(() => {
-      setShowInit(false);
-      const h = Math.round((155 + Math.random() * 30) * 10) / 10; // cm
-      setValue(h);
-      sessionStorage.setItem(SESSION_KEYS.height, String(h));
-      saveHeight(h);
-    }, initModalDelay);
-  };
+    setError('');
+    setHeight(null);
 
-  const saveHeight = async (heightValue) => {
     try {
-      const patientId = sessionStorage.getItem('patient_id');
-      if (!patientId) {
-        console.warn('No patient_id found in session.');
-        return;
-      }
-
-      const currentVitalId = sessionStorage.getItem('current_vital_id');
-
-      const response = await fetch(`${API_BASE}/receive-vitals/`, {
+      // Trigger Arduino to measure all vitals including height
+      const res = await fetch(`${API_BASE}/start_vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          patient_id: patientId,
-          height: heightValue,
-          id: currentVitalId || null,
-        }),
       });
 
-      const result = await response.json();
+      const data = await res.json();
+      console.log("🔥 Response from Django:", data);
 
-      if (response.ok) {
-        console.log('Height saved:', result);
-        // Reuse same vital record ID
-        if (result.data && result.data.id) {
-          sessionStorage.setItem('current_vital_id', result.data.id);
-        }
+      if (res.ok && data.height !== undefined) {
+        const measuredHeight = Number(data.height);
+        setHeight(measuredHeight);
+        sessionStorage.setItem(SESSION_KEYS.height, String(measuredHeight));
+        console.log('📏 Measured height:', measuredHeight);
       } else {
-        console.error('Failed to save height:', result);
+        setError(data.error || 'No height data received from Arduino.');
       }
     } catch (err) {
-      console.error('Error saving height:', err);
+      console.error('Error fetching height:', err);
+      setError('Failed to connect to Arduino.');
+    } finally {
+      setLoading(false);
+      setTimeout(() => setShowInit(false), initModalDelay);
     }
   };
+
+  const ready = height !== null;
 
   return (
     <section className="mx-auto max-w-4xl px-4 py-16">
@@ -69,7 +59,7 @@ export default function Height() {
         Stand straight beneath the height sensor until your height is detected.
       </p>
 
-      {!value && (
+      {!ready && (
         <div className="mt-6 flex justify-center">
           <img
             src={HeightImg}
@@ -79,18 +69,21 @@ export default function Height() {
         </div>
       )}
 
-      {!value ? (
+      {!ready ? (
         <div className="mt-8 text-center">
           <button
-            onClick={start}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+            onClick={handleStart}
+            disabled={loading}
+            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60"
           >
-            Start
+            {loading ? 'Measuring…' : 'Start'}
           </button>
+          {error && <p className="mt-3 text-red-600 font-medium">{error}</p>}
+          {loading && <p className="mt-3 text-slate-600">Initializing sensor…</p>}
         </div>
       ) : (
         <div className="mt-8 space-y-6 text-center">
-          <ResultCard label="Height" value={value} unit="cm" />
+          <ResultCard label="Height" value={height} unit="cm" />
           <button
             onClick={() => nav('/vitals/pulse')}
             className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
@@ -101,8 +94,8 @@ export default function Height() {
       )}
 
       <SmallModal open={showInit}>
-        <p className="text-xl font-semibold text-[#406E65]">Initializing height…</p>
-        <p className="mt-1 text-[#406E65]">Please hold still.</p>
+        <p className="text-xl font-semibold text-slate-800">Initializing height…</p>
+        <p className="mt-1 text-slate-600">Please hold still.</p>
       </SmallModal>
     </section>
   );

@@ -8,6 +8,7 @@ import nextIcon from '../assets/next.png'
 import listIcon from '../assets/list.png'
 import searchIcon from '../assets/search.png'
 import backIcon from '../assets/arrow.png'
+import Popup from '../components/ErrorPopup'
 
 
 const API_URL = 'http://localhost:8000'
@@ -28,7 +29,7 @@ export default function QueueManagement() {
   const [now, setNow] = useState(0)
   const [showNowModal, setShowNowModal] = useState(false)
   const tableRef = useRef(null)
-
+  const [popupMsg, setPopupMsg] = useState('');
   const currentEntry = queue[now]
   const currentNumber = useMemo(() => currentEntry?.queue_number ?? '—', [currentEntry])
 
@@ -135,7 +136,7 @@ export default function QueueManagement() {
   }
 
   const handleEmergency = async () => {
-    alert('Emergency patient: add via the main system with PRIORITY (E-code).')
+    setPopupMsg('Emergency patient: add via the main system with PRIORITY (E-code).')
     await fetchQueue()
   }
 
@@ -379,6 +380,7 @@ export default function QueueManagement() {
           </div>
         </div>
       )}
+    {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import backIcon from '../assets/arrow.png'
 import accIcon from '../assets/account.png'
 import historyIcon from '../assets/history.png'
+import Popup from '../components/ErrorPopup'
 
 const BRAND = {
   bg: '#DCEBE8',
@@ -17,7 +18,7 @@ export default function PatientRecords() {
   const nav = useNavigate()
   const { patientId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
-
+  const [popupMsg, setPopupMsg] = useState('');
   const [patients, setPatients] = useState([])
   const [currentPatient, setCurrentPatient] = useState(null)
   const [query, setQuery] = useState(searchParams.get('q') || '')
@@ -80,14 +81,14 @@ export default function PatientRecords() {
       throw new Error(errorMsg)
     }
 
-    alert('Patient record updated successfully')
+    setPopupMsg('Patient record updated successfully')
     setEditing(false)
     
     const currentSearch = searchParams.get('q') || ''
     fetchPatients(currentSearch)
   } catch (err) {
     console.error('Failed to save:', err)
-    alert(`Failed to save record: ${err.message}`)
+    setPopupMsg(`Failed to save record: ${err.message}`)
   }
 }
 
@@ -108,7 +109,7 @@ export default function PatientRecords() {
       }
     } catch (err) {
       console.error('Failed to fetch patients:', err)
-      alert('Failed to fetch patients')
+      setPopupMsg('Failed to fetch patients')
     } finally {
       setLoading(false)
     }
@@ -237,11 +238,11 @@ export default function PatientRecords() {
       
       if (!res.ok) throw new Error('Failed to save blood pressure')
       
-      alert('Blood pressure saved successfully')
+      setPopupMsg('Blood pressure saved successfully')
       fetchVitals(currentPatient.patient_id) 
     } catch (err) {
       console.error('Failed to save BP:', err)
-      alert('Failed to save blood pressure')
+      setPopupMsg('Failed to save blood pressure')
     }
   }
 
@@ -643,6 +644,7 @@ export default function PatientRecords() {
         </div>
       </div>
       )}
+    {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

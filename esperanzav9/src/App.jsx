@@ -31,7 +31,11 @@ import TermsofService from './pages/TermsofService'
 
 export default function App() {
   return (
+<<<<<<< HEAD
     <div style={{ backgroundImage: `url(${bgImage})` }} className="min-h-screen bg-cover bg-fixed bg-center scale-110x">
+=======
+    <div style={{ backgroundImage: `url(${bgImage})` }} className="min-h-screen bg-cover bg-fixed bg-center">
+>>>>>>> 793b3565ca221c12b28e83da32b3877d94ec7cc2
       <Navbar />
       <main className="min-h-[calc(100vh-4rem)] bg-white/70">
         <Routes>

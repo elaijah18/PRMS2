@@ -4,8 +4,10 @@ from datetime import date
 from .utils import compute_patient_priority
 from django.contrib.auth.hashers import make_password, check_password
 
+#ADDED STAFF USERNAME
 class HCStaff(models.Model):
     name = models.CharField(max_length=50)
+    username = models.CharField(max_length=20, unique=True)
     staff_pin = models.CharField(max_length=255, unique=True)
     
     def set_pin(self, raw_pin):
