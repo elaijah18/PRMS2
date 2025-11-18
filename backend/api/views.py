@@ -1687,7 +1687,7 @@ def print_to_pos58(request):
 
         receipt = f"""
     =============================
-       ESPERANZA HEALTH CENTER
+    ESPERANZA HEALTH CENTER
     =============================
     Patient: {patient.first_name} {patient.last_name}
     Age: {age_str}
@@ -1754,38 +1754,37 @@ def print_vitals_and_queue_pos58(request):
             bmi_value = round(vitals.weight / (height_m * height_m), 1)
             bmi_str = str(bmi_value)
 
-        # Prepare receipt text
-        # Prepare receipt text
+       # Prepare receipt text
         receipt = f"""
-        =============================
-           ESPERANZA HEALTH CENTER
-        =============================
+    =============================
+    ESPERANZA HEALTH CENTER
+    =============================
 
-        Patient: {patient.first_name} {patient.last_name}
-        ID: {patient.patient_id}
+    Patient: {patient.first_name} {patient.last_name}
+    ID: {patient.patient_id}
 
-        Queue No: {str(queue_num).zfill(3) if queue_num else '—'}
-        Priority: {priority}
+    Queue No: {str(queue_num).zfill(3) if queue_num else '—'}
+    Priority: {priority}
 
-        --- Vital Signs ---
-        Temp: {vitals.temperature or '—'} °C
-        Pulse: {vitals.heart_rate or '—'} bpm
-        SpO2: {vitals.oxygen_saturation or '—'} %
-        BP: {vitals.blood_pressure or '—'}
-        Height: {vitals.height or '—'} cm
-        Weight: {vitals.weight or '—'} kg
-        BMI: {bmi_str}
+    --- Vital Signs ---
+    Temp: {vitals.temperature or '—'} °C
+    Pulse: {vitals.heart_rate or '—'} bpm
+    SpO2: {vitals.oxygen_saturation or '—'} %
+    BP: {vitals.blood_pressure or '—'}
+    Height: {vitals.height or '—'} cm
+    Weight: {vitals.weight or '—'} kg
+    BMI: {bmi_str}
 
-        Recorded at:
-        {vitals.date_time_recorded.strftime("%Y-%m-%d %H:%M")}
+    Recorded at:
+    {vitals.date_time_recorded.strftime("%Y-%m-%d %H:%M")}
 
-        Thank you for visiting!
-        For check-up and consultation,
-        please proceed to the clinic area
-        once your number is called.
-        =============================
-        """
 
+    Thank you for visiting!
+    For check-up and consultation,
+    please proceed to the clinic area
+    once your number is called.
+    =============================
+    """
 
         # Send to thermal printer
         PRINTER_PATH = "/dev/usb/lp0"
