@@ -143,8 +143,8 @@ export default function VitalSigns() {
             
             sessionStorage.setItem('current_queue_number', queueNum)
             
-            if (myEntry.priority) {
-              const backendPriority = myEntry.priority.toUpperCase()
+            if (myEntry.priority_status) {
+              const backendPriority = myEntry.priority_status.toUpperCase()
               setPriority(backendPriority)
               sessionStorage.setItem('last_vitals_priority', backendPriority)
             }

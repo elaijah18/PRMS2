@@ -22,10 +22,20 @@ from io import BytesIO
 import serial, json, time, threading
 
 
-SERIAL_PORT = '/dev/ttyACM0'  # Adjust if using ACM1
+SERIAL_PORT = '/dev/ttyACM0'  # Adjust if using ACM0
 BAUD_RATE = 9600
 active_serial = None
 active_serial_lock = threading.Lock()
+
+import serial
+
+def get_or_create_serial():
+    try:
+        ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
+        return ser
+    except Exception as e:
+        print("Serial error:", e)
+        return None
 
 def get_next_fingerprint_id():
     """Get the next available fingerprint ID (1-127)"""
@@ -279,70 +289,72 @@ def check_enrollment_status(request):
     """Poll Arduino for enrollment status updates"""
     fingerprint_id = request.query_params.get('fingerprint_id')
     patient_id = request.query_params.get('patient_id')
-    
+   
     if not fingerprint_id or not patient_id:
         return Response(
-            {"error": "fingerprint_id and patient_id are required"}, 
+            {"error": "fingerprint_id and patient_id are required"},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+   
     ser = get_or_create_serial()
     if ser is None:
         return Response(
-            {"error": "Arduino connection error"}, 
+            {"error": "Arduino connection error"},
             status=status.HTTP_503_SERVICE_UNAVAILABLE
         )
-    
+   
     try:
         with active_serial_lock:
             # Check if there's data waiting
             if ser.in_waiting > 0:
                 line = ser.readline().decode('utf-8').strip()
-                
+               
                 if line:
                     try:
                         data = json.loads(line)
-                        
+                       
                         # If enrollment successful, save to database
-                        if data.get('status') == 'success':
+                        if data.get('status') == 'enrolled':
                             try:
                                 patient = Patient.objects.get(patient_id=patient_id)
                                 patient.fingerprint_id = fingerprint_id
                                 patient.save()
-                                
+                               
                                 return Response({
-                                    "status": "success",
+                                    "status": "enrolled",
                                     "fingerprint_id": fingerprint_id,
                                     "message": "Fingerprint enrolled and saved to database"
                                 })
                             except Patient.DoesNotExist:
                                 return Response(
-                                    {"error": "Patient not found"}, 
+                                    {"error": "Patient not found"},
                                     status=status.HTTP_404_NOT_FOUND
                                 )
-                        
+                       
                         # Return current status from Arduino
                         return Response(data)
-                        
+                       
                     except json.JSONDecodeError:
                         # Return the raw message if not JSON
                         return Response({
-                            "status": "waiting", 
+                            "status": "waiting",
                             "message": line
                         })
-            
+           
             # No data available yet
             return Response({
-                "status": "waiting", 
+                "status": "waiting",
                 "message": "No update from sensor"
             })
-                
+               
     except Exception as e:
         print(f"Error reading status: {e}")
         return Response(
-            {"error": f"Error: {str(e)}"}, 
+            {"error": f"Error: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
 
 @api_view(['DELETE'])
 def delete_fingerprint(request, patient_id):
@@ -1005,9 +1017,9 @@ class QueueViewSet(viewsets.ModelViewSet):
             status='WAITING'  # Only show waiting patients
         ).select_related('patient').annotate(
             priority_order=Case(
-                When(priority='CRITICAL', then=1),
-                When(priority='HIGH', then=2),
-                When(priority='MEDIUM', then=3),
+                When(priority_status='CRITICAL', then=1),
+                When(priority_status='HIGH', then=2),
+                When(priority_status='MEDIUM', then=3),
                 default=4,
                 output_field=IntegerField()
             )

@@ -1,8 +1,8 @@
-// Register.jsx
-// This page provides a registration form for new patients,
-// including biometric fingerprint capture (placeholder/demo only).
+// Register.jsx - Flow 1: Mandatory Fingerprint Enrollment
+// Fingerprint enrollment happens AUTOMATICALLY after registration
 
-import React, { useMemo, useState } from 'react'
+
+import React, { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import bgRegister from '../assets/bgreg.png'
 import fingerPrint from '../assets/fingerprint-sensor.png'
@@ -22,14 +22,17 @@ export default function Register() {
   const [creating, setCreating] = useState(false)
   const [popupMsg, setPopupMsg] = useState('');
 
+
   // Name fields
   const [first_name, setFirstName] = useState('')
   const [middle_name, setMiddleName] = useState('')
   const [last_name, setLastName] = useState('')
 
+
   // Demographics
   const [sex, setSex] = useState('Male')
   const [phone, setPhone] = useState('')
+
 
   // Address object state
   const [address, setAddress] = useState({
@@ -40,20 +43,27 @@ export default function Register() {
     country: 'Philippines'
   })
 
+
   // Birthdate
   const [month, setMonth] = useState(months[0])
   const [day, setDay] = useState(1)
   const [year, setYear] = useState(new Date().getFullYear())
+
 
   // Account
   const [username, setUsername] = useState('')
   const [pin, setPin] = useState('')
   const [showPin, setShowPin] = useState(false)
 
-  // Fingerprint (DEMO)
-  const [fpStatus, setFpStatus] = useState('idle') // idle | capturing | enrolled
+
+  // Fingerprint (REAL - communicates with Arduino)
+  const [fpStatus, setFpStatus] = useState('idle') // idle | enrolling | enrolled | error
   const [fpPreview, setFpPreview] = useState(null)
-  const requireFingerprint = false // demo: allow registration without real enrollment
+  const [fpMessage, setFpMessage] = useState('')
+  const [enrollmentTimer, setEnrollmentTimer] = useState(null)
+  const [enrollmentFingerprintId, setEnrollmentFingerprintId] = useState(null)
+  const [registeredPatientId, setRegisteredPatientId] = useState(null)
+
 
   const dob = useMemo(() => {
     const m = String(months.indexOf(month) + 1).padStart(2, '0')
@@ -61,35 +71,109 @@ export default function Register() {
     return `${year}-${m}-${d}`
   }, [month, day, year])
 
-  // Demo fingerprint capture
-  const startFingerprintCapture = async () => {
-    setFpStatus('capturing')
-    setFpPreview(null)
-    await new Promise(r => setTimeout(r, 1200))
-    const fakeTemplate = {
-      vendor: 'demo',
-      version: 1,
-      capturedAt: new Date().toISOString(),
-      data: Math.random().toString(36).slice(2),
+
+  // Cleanup enrollment timer on unmount
+  useEffect(() => {
+    return () => {
+      if (enrollmentTimer) {
+        clearInterval(enrollmentTimer)
+      }
     }
-    localStorage.setItem('fingerprintTemplate', JSON.stringify(fakeTemplate))
-    setFpPreview(fingerPrint)
-    setFpStatus('enrolled')
+  }, [enrollmentTimer])
+
+
+  // Auto-redirect when enrollment completes
+  useEffect(() => {
+    if (fpStatus === 'enrolled' && registeredPatientId) {
+      setTimeout(() => {
+        setCreating(false)
+        nav('/vitals/weight', { state: { afterCaptureGoTo: '/records' } })
+      }, 1500)
+    }
+  }, [fpStatus, registeredPatientId, nav])
+
+
+  // Automatic fingerprint enrollment function
+  const startAutomaticEnrollment = async (patientId) => {
+    setFpStatus('enrolling')
+    setFpMessage('Starting fingerprint enrollment...')
+   
+    try {
+      // Start enrollment with backend
+      const response = await fetch('http://localhost:8000/fingerprint/enroll/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ patient_id: patientId })
+      })
+     
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to start enrollment')
+      }
+     
+      const data = await response.json()
+      setEnrollmentFingerprintId(data.fingerprint_id)
+      setFpMessage('Place your finger on the sensor')
+     
+      // Start polling for enrollment status
+      const timer = setInterval(async () => {
+        try {
+          const statusRes = await fetch(
+            `http://localhost:8000/fingerprint/status/?fingerprint_id=${data.fingerprint_id}&patient_id=${patientId}`,
+            { credentials: 'include' }
+          )
+         
+          const statusData = await statusRes.json()
+         
+          // Update message based on status
+          if (statusData.message) {
+            setFpMessage(statusData.message)
+          }
+         
+          if (statusData.status === 'enrolled') {
+            clearInterval(timer)
+            setEnrollmentTimer(null)
+            setFpStatus('enrolled')
+            setFpPreview(fingerPrint)
+            setFpMessage('Fingerprint enrolled successfully!')
+            setPopupMsg('Registration complete! Redirecting...')
+          } else if (statusData.status === 'error') {
+            clearInterval(timer)
+            setEnrollmentTimer(null)
+            setFpStatus('error')
+            setFpMessage(statusData.message || 'Enrollment failed')
+            setPopupMsg('Enrollment failed: ' + (statusData.message || 'Please try again'))
+            setCreating(false)
+          }
+        } catch (err) {
+          console.error('Error checking enrollment status:', err)
+        }
+      }, 1000)
+     
+      setEnrollmentTimer(timer)
+     
+    } catch (err) {
+      setPopupMsg(err.message || 'Failed to start fingerprint enrollment')
+      setFpStatus('error')
+      setFpMessage('Enrollment failed')
+      setCreating(false)
+    }
   }
+
 
   const submit = async (e) => {
     e.preventDefault()
 
-    if (requireFingerprint && fpStatus !== 'enrolled') {
-      setPopupMsg('Please capture fingerprint before registering.')
-      return
-    }
+
     if (!first_name.trim() || !last_name.trim()) {
       setPopupMsg('Please enter first and last name.')
       return
     }
 
+
     setCreating(true)
+
 
     const patientProfile = {
       first_name: first_name.trim(),
@@ -100,13 +184,13 @@ export default function Register() {
       contact: phone.trim(),
       street: address.street.trim(),
       barangay: address.barangay.trim(),
-      // address: `${address.street}, ${address.barangay}, ${address.city}, ${address.region}, ${address.country}`,
       username: username.trim(),
       pin
     }
 
+
     try {
-      // Register
+      // 1. Register patient
       const registerRes = await fetch('http://localhost:8000/patients/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,15 +198,17 @@ export default function Register() {
         body: JSON.stringify(patientProfile),
       })
 
+
       if (!registerRes.ok) {
         const err = await registerRes.json().catch(() => ({}))
         const message = err.username?.[0] || err.username || err.error || err.detail || err.message || "Failed to register patient"
         setPopupMsg(message.charAt(0).toUpperCase() + message.slice(1))
         setCreating(false)
         return
-      } 
+      }
 
-      // Auto-login
+
+      // 2. Auto-login
       const loginRes = await fetch('http://localhost:8000/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -134,6 +220,7 @@ export default function Register() {
         }),
       })
 
+
       if (!loginRes.ok) {
         setPopupMsg("Registration successful but login failed. Please login manually.")
         setCreating(false)
@@ -141,22 +228,34 @@ export default function Register() {
         return
       }
 
+
       const loginData = await loginRes.json().catch(() => ({}))
       sessionStorage.setItem('isAuthenticated', 'true')
 
+
       if (loginData.patient_id) {
         sessionStorage.setItem('patient_id', loginData.patient_id)
+        setRegisteredPatientId(loginData.patient_id)
+       
+        // 3. 🆕 AUTOMATICALLY START FINGERPRINT ENROLLMENT
+        setPopupMsg('Account created! Now enrolling fingerprint...')
+        await startAutomaticEnrollment(loginData.patient_id)
+       
+        // Enrollment is now running in background
+        // Redirect happens automatically via useEffect when fpStatus becomes 'enrolled'
+       
       } else {
-        console.warn("Login successful but no patient_id found in response payload. Check backend /login/ response.")
+        console.warn("Login successful but no patient_id found in response payload.")
+        setCreating(false)
       }
 
-      setCreating(false)
-      nav('/vitals/weight', { state: { afterCaptureGoTo: '/records' } })
+
     } catch (err) {
-      setPopupMsg("Network error. Please try again.");
+      setPopupMsg("Network error. Please try again.")
       setCreating(false)
     }
   }
+
 
   return (
     <section
@@ -165,10 +264,12 @@ export default function Register() {
     >
       <div className="absolute inset-0 bg-emerald-900/40 backdrop-blur-sm" />
 
+
       <div className="relative w-full max-w-5xl bg-white rounded-3xl shadow-xl p-6 md:p-10">
         <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-emerald-700 mb-8">
           Register
         </h2>
+
 
         <div className="grid gap-8 md:grid-cols-[2fr,1fr]">
           <form onSubmit={submit} className="grid gap-6">
@@ -180,7 +281,8 @@ export default function Register() {
                   value={first_name}
                   onChange={e => setFirstName(e.target.value.replace(/[^A-Za-z ]/g, ''))}
                   required
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                  disabled={creating}
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                 />
               </div>
               <div>
@@ -189,7 +291,8 @@ export default function Register() {
                   value={middle_name}
                   onChange={e => setMiddleName(e.target.value.replace(/[^A-Za-z ]/g, ''))}
                   placeholder="(optional)"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                  disabled={creating}
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                 />
               </div>
               <div>
@@ -198,10 +301,12 @@ export default function Register() {
                   value={last_name}
                   onChange={e => setLastName(e.target.value.replace(/[^A-Za-z ]/g, ''))}                
                   required
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                  disabled={creating}
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                 />
               </div>
             </div>
+
 
             {/* Sex / Birthdate */}
             <div className="grid md:grid-cols-3 gap-6">
@@ -210,7 +315,8 @@ export default function Register() {
                 <select
                   value={sex}
                   onChange={e=>setSex(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                  disabled={creating}
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                 >
                   <option>Male</option>
                   <option>Female</option>
@@ -222,21 +328,24 @@ export default function Register() {
                   <select
                     value={month}
                     onChange={e=>setMonth(e.target.value)}
-                    className="rounded-xl border border-slate-300 px-3 py-2.5"
+                    disabled={creating}
+                    className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                   >
                     {months.map(m => <option key={m}>{m}</option>)}
                   </select>
                   <select
                     value={day}
                     onChange={e=>setDay(Number(e.target.value))}
-                    className="rounded-xl border border-slate-300 px-3 py-2.5"
+                    disabled={creating}
+                    className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                   >
                     {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d}>{d}</option>)}
                   </select>
                   <select
                     value={year}
                     onChange={e=>setYear(Number(e.target.value))}
-                    className="rounded-xl border border-slate-300 px-3 py-2.5"
+                    disabled={creating}
+                    className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                   >
                     {Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i).map(y => (
                       <option key={y}>{y}</option>
@@ -246,80 +355,56 @@ export default function Register() {
               </div>
             </div>
 
+
             {/* Contact / Address */}
             <div className="grid md:grid-cols-[1fr,2fr] gap-2 items-start md:items-center">
-              {/* Phone */}
               <div>
                 <label className="text-sm font-semibold text-slate-700">Phone Number</label>
                 <input
                   value={phone}
                   onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
                   required
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5"
+                  disabled={creating}
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                 />
               </div>
 
-              {/* Address Section */}
+
               <div className="md:col-span-2">
                 <label className="text-sm font-semibold text-slate-700 block mb-2">Address</label>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Street */}
                   <div>
                     <input
                       type="text"
                       placeholder="Street / Building / House No."
                       value={address.street}
                       onChange={e => setAddress({ ...address, street: e.target.value })}
-                      className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                      disabled={creating}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                       required
                     />
                   </div>
-
-                  {/* Barangay */}
                   <div>
-                  <select
-                    value={address.barangay}
-                    onChange={e => setAddress({ ...address, barangay: e.target.value })}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                    required
-                  >
-                    <option value="">Select Brgy.</option>
-
-                    <option value="3">Brgy. 587A</option>
-
-                    {/* Existing generated options */}
-                    {Array.from({ length: 648 - 587 + 1 }, (_, i) => 587 + i).map(brgy => (
-                      <option key={brgy} value={brgy - 586}>
-                        Brgy. {brgy}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                  {/* City / Region / Country on same row */}
+                    <select
+                      value={address.barangay}
+                      onChange={e => setAddress({ ...address, barangay: e.target.value })}
+                      disabled={creating}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
+                      required
+                    >
+                      <option value="">Select Brgy.</option>
+                      <option value="3">Brgy. 587A</option>
+                      {Array.from({ length: 648 - 587 + 1 }, (_, i) => 587 + i).map(brgy => (
+                        <option key={brgy} value={brgy - 586}>
+                          Brgy. {brgy}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="grid grid-cols-3 gap-4 col-span-2">
-                    {/* City */}
-                    <input
-                      type="text"
-                      value="Manila"
-                      readOnly
-                      className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed"
-                    />
-                    {/* Region */}
-                    <input
-                      type="text"
-                      value="NCR"
-                      readOnly
-                      className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed"
-                    />
-                    {/* Country */}
-                    <input
-                      type="text"
-                      value="Philippines"
-                      readOnly
-                      className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed"
-                    />
+                    <input type="text" value="Manila" readOnly className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed" />
+                    <input type="text" value="NCR" readOnly className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed" />
+                    <input type="text" value="Philippines" readOnly className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed" />
                   </div>
                 </div>
               </div>
@@ -334,7 +419,8 @@ export default function Register() {
                   value={username}
                   onChange={e=>setUsername(e.target.value)}
                   required
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                  disabled={creating}
+                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                 />
               </div>
               <div>
@@ -348,13 +434,15 @@ export default function Register() {
                     inputMode="numeric"
                     pattern="\d{4}"
                     type={showPin ? 'text' : 'password'}
-                    className="mt-0 w-full rounded-xl border border-slate-300 px-4 py-2.5 pr-12"
+                    disabled={creating}
+                    className="mt-0 w-full rounded-xl border border-slate-300 px-4 py-2.5 pr-12 disabled:opacity-50"
                     autoComplete="new-password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPin(s => !s)}
-                    className="absolute inset-y-0 right-2 my-auto h-9 w-9 grid place-items-center rounded-md hover:bg-slate-100"
+                    disabled={creating}
+                    className="absolute inset-y-0 right-2 my-auto h-9 w-9 grid place-items-center rounded-md hover:bg-slate-100 disabled:opacity-50"
                   >
                     <img
                       src={showPin ? hidePinIcon : showPinIcon}
@@ -366,66 +454,90 @@ export default function Register() {
               </div>
             </div>
 
+
             <div className="text-right">
               <button
                 type="submit"
-                disabled={creating || (requireFingerprint && fpStatus !== 'enrolled')}
+                disabled={creating}
                 className="mt-6 bg-[#6ec1af] hover:bg-emerald-800/70 disabled:opacity-60 text-white font-bold px-8 py-3 rounded-xl shadow-md"
               >
-                {creating ? 'Creating Account...' : 'Register'}
+                {creating ? (fpStatus === 'enrolling' ? 'Enrolling Fingerprint...' : 'Creating Account...') : 'Register'}
               </button>
             </div>
           </form>
 
-          {/* Biometric Card (Demo Only) */}
+
+          {/* Biometric Status Card */}
           <aside className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6">
             <h3 className="text-lg font-extrabold text-emerald-800">Biometric Enrollment</h3>
             <p className="mt-1 text-sm text-emerald-900/80">
-              Capture the patient’s fingerprint. Placeholder only — will wire up the sensor later.
+              Fingerprint enrollment is required for registration
             </p>
+           
             <div className="mt-5 grid place-items-center">
               <div className="h-32 w-32 rounded-full bg-white border-2 border-emerald-300 grid place-items-center overflow-hidden">
-                {fpStatus === 'capturing' && <div className="h-8 w-8 animate-ping rounded-full bg-emerald-400" />}
-                {fpStatus === 'idle' && <div className="text-emerald-700/80 text-sm">No scan</div>}
+                {fpStatus === 'enrolling' && (
+                  <div className="h-8 w-8 animate-ping rounded-full bg-emerald-400" />
+                )}
+                {fpStatus === 'idle' && (
+                  <div className="text-emerald-700/80 text-sm text-center px-2">
+                    Ready
+                  </div>
+                )}
                 {fpStatus === 'enrolled' && fpPreview && (
                   <img src={fpPreview} alt="Fingerprint preview" className="h-full w-full object-contain" />
                 )}
+                {fpStatus === 'error' && (
+                  <div className="text-red-600 text-sm text-center px-2">Error</div>
+                )}
               </div>
             </div>
+           
             <div className="mt-4">
               <p className="text-sm">
                 Status:{' '}
                 <span className={`font-semibold ${
                   fpStatus === 'enrolled' ? 'text-emerald-700' :
-                  fpStatus === 'capturing' ? 'text-emerald-600' : 'text-slate-600'
+                  fpStatus === 'enrolling' ? 'text-blue-600' :
+                  fpStatus === 'error' ? 'text-red-600' :
+                  'text-slate-600'
                 }`}>
-                  {fpStatus === 'idle' && 'Not enrolled'}
-                  {fpStatus === 'capturing' && 'Capturing…'}
-                  {fpStatus === 'enrolled' && 'Enrolled'}
+                  {fpStatus === 'idle' && 'Waiting...'}
+                  {fpStatus === 'enrolling' && 'Enrolling...'}
+                  {fpStatus === 'enrolled' && 'Enrolled ✓'}
+                  {fpStatus === 'error' && 'Failed'}
                 </span>
               </p>
+              {fpMessage && (
+                <p className="text-xs text-emerald-800 mt-2">{fpMessage}</p>
+              )}
             </div>
-            <div className="mt-5 flex flex-wrap gap-3">
-              {fpStatus !== 'capturing' && (
-                <button
-                  type="button"
-                  onClick={startFingerprintCapture}
-                  className="rounded-xl bg-[#6ec1af] hover:bg-emerald-800/70 text-white font-semibold px-4 py-2"
-                >
-                  {fpStatus === 'enrolled' ? 'Re-capture' : 'Start Capture'}
-                </button>
+           
+            <div className="mt-5">
+              {fpStatus === 'enrolling' && (
+                <div className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-blue-800 text-sm">
+                  Please place your finger on the sensor when prompted
+                </div>
               )}
-              {fpStatus === 'capturing' && (
-                <button type="button" disabled className="rounded-xl bg-[#6ec1af] text-white font-semibold px-4 py-2">
-                  Capturing…
-                </button>
-              )}
+             
               {fpStatus === 'enrolled' && (
-                <div className="rounded-xl border border-emerald-300 bg-white px-3 py-2 text-emerald-800 text-sm">
-                  Fingerprint saved
+                <div className="rounded-xl border border-emerald-300 bg-white px-3 py-2 text-emerald-800 text-sm flex items-center gap-2">
+                  <span>✓</span>
+                  <span>Fingerprint enrolled successfully</span>
+                </div>
+              )}
+
+
+              {fpStatus === 'error' && (
+                <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-red-800 text-sm">
+                  Enrollment failed. Please try registering again.
                 </div>
               )}
             </div>
+           
+            <p className="mt-3 text-xs text-slate-600 italic">
+              After submitting the form, you'll be prompted to enroll your fingerprint automatically.
+            </p>
           </aside>
         </div>
       </div>
