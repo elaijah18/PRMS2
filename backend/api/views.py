@@ -20,16 +20,12 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from io import BytesIO
 import serial, json, time, threading
+import atexit
 
 
 SERIAL_PORT = 'COM8'  # Adjust if using ACM0
 BAUD_RATE = 115200
-# active_serial = None
-# _serial_lock = threading.Lock()
-
-import serial
-
-import atexit
+IS_SCANNING = False
 
 # Global persistent connection
 _serial_connection = None
@@ -79,36 +75,36 @@ def get_next_fingerprint_id():
 
 @api_view(['POST'])
 def start_fingerprint_scan(request):
-    """
-    Start fingerprint scanning mode for login
-    Arduino will continuously scan until a match is found
-    """
+    global IS_SCANNING
+
     ser = get_serial()
     if ser is None:
-        return Response(
-            {"error": "Arduino connection error"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-    
+        return Response({"error": "Arduino connection error"}, status=503)
+
     try:
         with _serial_lock:
-            # Clear buffer
+
+            # ✅ If already scanning, DO NOT send SCAN again
+            if IS_SCANNING:
+                return Response({
+                    "status": "scanning",
+                    "message": "Already scanning"
+                })
+
+            # Clear buffer and send SCAN only once
             ser.reset_input_buffer()
-            
-            # Send scan command to Arduino
             ser.write(b"SCAN\n")
             ser.flush()
-        
+            IS_SCANNING = True
+
         return Response({
             "status": "scanning",
             "message": "Place finger on sensor"
         })
-        
+
     except Exception as e:
-        return Response(
-            {"error": f"Communication error: {str(e)}"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
+        return Response({"error": str(e)}, status=503)
+
 
 
 @api_view(['GET'])
@@ -164,29 +160,26 @@ def check_fingerprint_match(request):
 
 @api_view(['POST'])
 def stop_fingerprint_scan(request):
-    """Stop fingerprint scanning mode"""
-    ser = get_serial()  # ✅ Changed
+    global IS_SCANNING
+
+    ser = get_serial()
     if ser is None:
-        return Response(
-            {"error": "Arduino connection error"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-    
+        return Response({"error": "Arduino connection error"}, status=503)
+
     try:
-        with _serial_lock:  # ✅ Changed
-            ser.write(b"STOP\n")
-            ser.flush()
-        
-        return Response({
-            "status": "stopped",
-            "message": "Scanning stopped"
-        })
-        
+        with _serial_lock:
+
+            if IS_SCANNING:
+                ser.write(b"STOP\n")
+                ser.flush()
+
+            IS_SCANNING = False
+
+        return Response({"status": "stopped"})
+
     except Exception as e:
-        return Response(
-            {"error": f"Communication error: {str(e)}"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
+        return Response({"error": str(e)}, status=503)
+
 
 
 @api_view(['POST'])
