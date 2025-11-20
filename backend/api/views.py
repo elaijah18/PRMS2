@@ -1686,24 +1686,24 @@ def print_to_pos58(request):
             bmi_str = str(bmi_value)
 
         receipt = f"""
-    =============================
-    ESPERANZA HEALTH CENTER
-    =============================
-    Patient: {patient.first_name} {patient.last_name}
-    Age: {age_str}
-    ID: {patient.patient_id}
+=============================
+ESPERANZA HEALTH CENTER
+=============================
+Patient: {patient.first_name} {patient.last_name}
+Age: {age_str}
+ID: {patient.patient_id}
 
-    TEMP: {latest_vital.temperature or '—'} °C
-    PULSE: {latest_vital.heart_rate or '—'} bpm
-    SPO2: {latest_vital.oxygen_saturation or '—'} %
-    HEIGHT: {latest_vital.height or '—'} cm
-    WEIGHT: {latest_vital.weight or '—'} kg
-    BMI: {bmi_str} kg/m²
-    BP: {latest_vital.blood_pressure or '—'}
-    Recorded at: {latest_vital.date_time_recorded.strftime("%Y-%m-%d %H:%M")}
+TEMP: {latest_vital.temperature or '—'} °C
+PULSE: {latest_vital.heart_rate or '—'} bpm
+SPO2: {latest_vital.oxygen_saturation or '—'} %
+HEIGHT: {latest_vital.height or '—'} cm
+WEIGHT: {latest_vital.weight or '—'} kg
+BMI: {bmi_str} kg/m²
+BP: {latest_vital.blood_pressure or '—'}
+Recorded at: {latest_vital.date_time_recorded.strftime("%Y-%m-%d %H:%M")}
 
-    Thank you for visiting!
-    =============================
+Thank you for visiting!
+=============================
 
     """
 
@@ -1755,44 +1755,39 @@ def print_vitals_and_queue_pos58(request):
             bmi_str = str(bmi_value)
 
        # Prepare receipt text
-            queue_num_text = (
-                "\x1B\x21\x30"  
-                + f"{str(queue_num).zfill(3) if queue_num else '—'}"
-                + "\x1B\x21\x00"  
-            )
+        queue_num_display = str(queue_num).zfill(3) if queue_num else "—"
 
-            
-            queue_box = f"""
-                    ╔══════════════════════╗
-                    ║   {queue_num_text}   ║
-                    ╚══════════════════════╝
-            """
+        big_queue = (
+            "\x1B\x21\x30"  
+            + f"{queue_num_display}\n"
+            + "\x1B\x21\x00"  
+        )
 
-            receipt = f"""
-            Esperanza Health Center
-              Vital Signs Result
-    {vitals.date_time_recorded.strftime("%m/%d/%Y %I:%M %p")}
-    --------------------------------
-                Queue No.
-    {queue_box}
-    Priority: [{priority} {get_priority_code(priority)}]
-    --------------------------------
-    Patient ID      {patient.patient_id}
-    Patient Name    {patient.first_name} {patient.last_name}
-    --------------------------------
-    Measurements
-    Weight          {vitals.weight or "—"} kg
-    Height          {vitals.height or "—"} cm
-    BMI             {bmi_str} kg/m²
-    Heart Rate      {vitals.heart_rate or "—"} bpm
-    SpO₂            {vitals.oxygen_saturation or "—"} %
-    Temp            {vitals.temperature or "—"} °C
-    BP              {vitals.blood_pressure or "—"} mmHg
-    --------------------------------
-    Thank you for visiting!
-    For check-up and consultation,
-    please proceed to the clinic area.
-    """
+        receipt = f"""
+    Esperanza Health Center
+       Vital Signs Result
+       {vitals.date_time_recorded.strftime("%m/%d/%Y %I:%M %p")}
+--------------------------------
+             Queue No.
+{big_queue}
+Priority: [{priority} {get_priority_code(priority)}]
+--------------------------------
+Patient ID      {patient.patient_id}
+Patient Name    {patient.first_name} {patient.last_name}
+--------------------------------
+Measurements
+Weight          {vitals.weight or "—"} kg
+Height          {vitals.height or "—"} cm
+BMI             {bmi_str} kg/m²
+Heart Rate      {vitals.heart_rate or "—"} bpm
+SpO2            {vitals.oxygen_saturation or "—"} %
+Temp            {vitals.temperature or "—"} °C
+BP              {vitals.blood_pressure or "—"} mmHg
+--------------------------------
+Thank you for visiting!
+For check-up and consultation,
+please proceed to the clinic area.
+"""
 
         # Send to thermal printer
         PRINTER_PATH = "/dev/usb/lp0"
