@@ -25,6 +25,8 @@ export default function Records() {
   const nav = useNavigate()
   const printRef = useRef(null)
   const [popupMsg, setPopupMsg] = useState('');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
 
   // ---------- helpers ----------
   const calcAge = (dobStr) => {
@@ -167,17 +169,18 @@ export default function Records() {
 
   // ---------- actions ----------
   const handleLogout = async () => {
-    try {
-      await fetch('http://localhost:8000/logout/', {
-        method: 'POST',
-        credentials: 'include',
-      })
-    } catch (err) {
-      console.error('Logout error:', err)
-    }
-    sessionStorage.clear()
-    nav('/login')
+  try {
+    await fetch('http://localhost:8000/logout/', {
+      method: 'POST',
+      credentials: 'include',
+    })
+  } catch (err) {
+    console.error('Logout error:', err)
   }
+  sessionStorage.clear()
+  nav('/login')
+}
+
 
   // ---------- Enhanced Print Functions ----------
   
@@ -588,7 +591,7 @@ export default function Records() {
       </style>
 
       <button
-        onClick={handleLogout}
+        onClick={() => setShowLogoutConfirm(true)}
         className="absolute right-4 top-4 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-[#406E65] shadow hover:bg-slate-50"
       >
         <img src={logoutIcon} alt="Logout" className="h-4 w-4 object-contain" />
@@ -674,6 +677,35 @@ export default function Records() {
       {/* Enhanced Print Ticket */}
       <EnhancedPrintTicket />
     {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
+
+    {showLogoutConfirm && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="bg-white rounded-xl p-6 w-[90%] max-w-sm text-center shadow-lg">
+      <p className="text-lg font-semibold text-slate-700">
+        Are you sure you want to logout?
+      </p>
+
+      <div className="mt-6 flex justify-center gap-4">
+        <button
+          onClick={() => setShowLogoutConfirm(false)}
+          className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300"
+        >
+          Cancel
+        </button>
+
+        <button
+          onClick={() => {
+            setShowLogoutConfirm(false);
+            handleLogout();
+          }}
+          className="px-4 py-2 rounded-lg bg-[#6ec1af] text-white hover:bg-emerald-800/70"
+        >
+          Logout
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </section>
   )
 }

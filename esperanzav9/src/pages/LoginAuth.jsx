@@ -326,7 +326,7 @@ export default function LoginAuth() {
             <p className="mt-2 text-xs text-slate-500">
               {pinReady
                 ? 'Press Enter on the keypad to continue.'
-                : 'Enter your username and 4-digit PIN.'}
+                : 'Enter your credentials.'}
             </p>
           </div>
 
