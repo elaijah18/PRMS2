@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from .models import Patient, VitalSigns, HCStaff, QueueEntry, ArchivedPatient, ArchivedVitalSigns, ArchivedQueueEntry
 from .models import archive_patient, restore_patient
 from .serializers import PatientSerializer, VitalSignsSerializer, QueueEntrySerializer 
-from django.db.models import Q, Case, When, IntegerField, Max  # For queue sorting
+from django.db.models import Q, Case, When, IntegerField, Max  
 from django.utils import timezone  
 from .utils import compute_patient_priority
 from django.views.decorators.csrf import csrf_exempt
@@ -20,18 +20,15 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from io import BytesIO
 import serial, json, time, threading
+import atexit
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 
 SERIAL_PORT = 'COM8'  # Adjust if using ACM0
 BAUD_RATE = 115200
-# active_serial = None
-# _serial_lock = threading.Lock()
+IS_SCANNING = False
 
-import serial
-
-import atexit
-
-# Global persistent connection
 _serial_connection = None
 _serial_lock = threading.Lock()
 
@@ -72,44 +69,37 @@ def get_next_fingerprint_id():
     
     return None  # All IDs are used
 
-# Simpler approach: Keep serial connection open globally
-# Add at module level (after imports)
-
-
-
 @api_view(['POST'])
 def start_fingerprint_scan(request):
-    """
-    Start fingerprint scanning mode for login
-    Arduino will continuously scan until a match is found
-    """
+    global IS_SCANNING
+
     ser = get_serial()
     if ser is None:
-        return Response(
-            {"error": "Arduino connection error"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-    
+        return Response({"error": "Arduino connection error"}, status=503)
+
     try:
         with _serial_lock:
-            # Clear buffer
+
+            # If already scanning, DO NOT send SCAN again
+            if IS_SCANNING:
+                return Response({
+                    "status": "scanning",
+                    "message": "Already scanning"
+                })
+
+            # Clear buffer and send SCAN only once
             ser.reset_input_buffer()
-            
-            # Send scan command to Arduino
             ser.write(b"SCAN\n")
             ser.flush()
-        
+            IS_SCANNING = True
+
         return Response({
             "status": "scanning",
             "message": "Place finger on sensor"
         })
-        
-    except Exception as e:
-        return Response(
-            {"error": f"Communication error: {str(e)}"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
 
+    except Exception as e:
+        return Response({"error": str(e)}, status=503)
 
 @api_view(['GET'])
 def check_fingerprint_match(request):
@@ -164,30 +154,25 @@ def check_fingerprint_match(request):
 
 @api_view(['POST'])
 def stop_fingerprint_scan(request):
-    """Stop fingerprint scanning mode"""
-    ser = get_serial()  # ✅ Changed
-    if ser is None:
-        return Response(
-            {"error": "Arduino connection error"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-    
-    try:
-        with _serial_lock:  # ✅ Changed
-            ser.write(b"STOP\n")
-            ser.flush()
-        
-        return Response({
-            "status": "stopped",
-            "message": "Scanning stopped"
-        })
-        
-    except Exception as e:
-        return Response(
-            {"error": f"Communication error: {str(e)}"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
+    global IS_SCANNING
 
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Arduino connection error"}, status=503)
+
+    try:
+        with _serial_lock:
+
+            if IS_SCANNING:
+                ser.write(b"STOP\n")
+                ser.flush()
+
+            IS_SCANNING = False
+
+        return Response({"status": "stopped"})
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=503)
 
 @api_view(['POST'])
 def start_fingerprint_enrollment(request):
@@ -217,7 +202,7 @@ def start_fingerprint_enrollment(request):
                 status=status.HTTP_507_INSUFFICIENT_STORAGE
             )
         
-        ser = get_serial()  # ✅ Changed
+        ser = get_serial() 
         if ser is None:
             return Response(
                 {"error": "Arduino connection error"}, 
@@ -225,7 +210,7 @@ def start_fingerprint_enrollment(request):
             )
         
         try:
-            with _serial_lock:  # ✅ Changed
+            with _serial_lock:
                 ser.reset_input_buffer()
                 command = f"E:{fingerprint_id}\n"
                 ser.write(command.encode())
@@ -249,7 +234,6 @@ def start_fingerprint_enrollment(request):
             {"error": "Patient not found"}, 
             status=status.HTTP_404_NOT_FOUND
         )
-
 
 @api_view(['GET'])
 def check_enrollment_status(request):
@@ -321,8 +305,6 @@ def check_enrollment_status(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-
-
 @api_view(['DELETE'])
 def delete_fingerprint(request, patient_id):
     """
@@ -370,34 +352,6 @@ def delete_fingerprint(request, patient_id):
             status=status.HTTP_404_NOT_FOUND
         )
 
-
-@api_view(['GET'])
-def get_fingerprint_count(request):
-    """Get total number of enrolled fingerprints from sensor"""
-    try:
-        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
-            time.sleep(2)
-            
-            ser.write(b"COUNT\n")
-            time.sleep(1)
-            
-            if ser.in_waiting:
-                response = ser.readline().decode('utf-8').strip()
-                try:
-                    data = json.loads(response)
-                    return Response(data)
-                except json.JSONDecodeError:
-                    return Response({"error": "Invalid response from sensor"})
-            
-            return Response({"error": "No response from sensor"})
-            
-    except serial.SerialException as e:
-        return Response(
-            {"error": f"Arduino connection error: {str(e)}"}, 
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-
-
 latest_vitals = {
     "temperature": None,
     "heart_rate": None,
@@ -405,22 +359,18 @@ latest_vitals = {
     "height": None,
 }
 
-import serial, json, time
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-
 
 @api_view(['POST'])
 def start_vitals(request):
     """Trigger Arduino to measure temperature, heart rate, SpO2, height"""
-    ser = get_serial()  # ✅ Use shared connection
+    ser = get_serial()
     if ser is None:
         return Response({"error": "Arduino connection error"}, status=500)
     
     try:
         print("📡 Sending START command...")
         
-        with _serial_lock:  # ✅ Lock the shared connection
+        with _serial_lock:
             # Clear buffers
             ser.reset_input_buffer()
             ser.reset_output_buffer()
@@ -460,11 +410,11 @@ def start_vitals(request):
             "height": data.get("height")
         })
 
-        print("✅ Vitals received:", latest_vitals)
+        print("Vitals received:", latest_vitals)
         return Response(latest_vitals)
 
     except Exception as e:
-        print("🔥 Error reading vitals:", e)
+        print("Error reading vitals:", e)
         return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
@@ -511,7 +461,7 @@ def fetch_heart_rate(request):
                         heart_rate = data.get("heart_rate")
                         if heart_rate is not None:
                             latest_vitals["heart_rate"] = int(heart_rate)
-                            print(f"❤️ Heart Rate: {heart_rate} bpm")
+                            print(f"Heart Rate: {heart_rate} bpm")
                             return Response({"heart_rate": heart_rate})
                     except json.JSONDecodeError:
                         pass
@@ -538,7 +488,7 @@ def fetch_spo2(request):
                         spo2 = data.get("spo2")
                         if spo2 is not None:
                             latest_vitals["spo2"] = int(spo2)
-                            print(f"🫁 SpO2: {spo2}%")
+                            print(f"SpO2: {spo2}%")
                             return Response({"spo2": spo2})
                     except json.JSONDecodeError:
                         pass
@@ -565,7 +515,7 @@ def fetch_height(request):
                         height = data.get("height")
                         if height is not None:
                             latest_vitals["height"] = int(height)
-                            print(f"📏 Height: {height} cm")
+                            print(f"Height: {height} cm")
                             return Response({"height": height})
                     except json.JSONDecodeError:
                         pass
@@ -574,16 +524,13 @@ def fetch_height(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
-
-# Create your views here.
-
 class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
     serializer_class = PatientSerializer
     permission_classes = [AllowAny] 
     
-    @action(detail=False, methods=['get'])  # Custom action to get patient by PIN
-    def by_pin(self, request):  # GET /patients/by_pin/?pin=1234
+    @action(detail=False, methods=['get'])
+    def by_pin(self, request):
         pin = request.query_params.get('pin')   
         if not pin:
             return Response({"error": "PIN is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1179,10 +1126,8 @@ def get_all_patients(request):
 @api_view(['POST'])
 def archive_patient_view(request, patient_id):
     """Archive a patient and all their records"""
-    staff = None  # Get from session if needed
-    reason = request.data.get('reason', 'No reason provided')
     
-    success, message = archive_patient(patient_id, staff, reason)
+    success, message = archive_patient(patient_id)
     
     if success:
         return Response({"message": message}, status=status.HTTP_200_OK)
@@ -1210,8 +1155,6 @@ def get_archived_patients(request):
         'patient_id': p.patient_id,
         'name': f"{p.first_name} {p.last_name}",
         'archived_at': p.archived_at,
-        'archived_by': p.archived_by.name if p.archived_by else None,
-        'archive_reason': p.archive_reason,
     } for p in archived]
     
     return Response(data)
@@ -1263,7 +1206,6 @@ def verify_fingerprint(request):
     except Patient.DoesNotExist:
         return Response({"error": f"No patient found with fingerprint_id {user_id}"}, status=404)
 
-# Add this to your views.py
 @api_view(['POST'])
 def fingerprint_match_notification(request):
     """
@@ -1275,10 +1217,7 @@ def fingerprint_match_notification(request):
     
     try:
         patient = Patient.objects.get(fingerprint_id=fingerprint_id)
-        
-        # You could trigger websocket notifications here
-        # or update a cache for frontend polling
-        
+    
         return Response({
             'status': 'success',
             'patient_id': patient.patient_id,
@@ -1290,9 +1229,6 @@ def fingerprint_match_notification(request):
             'message': 'Fingerprint not registered'
         }, status=404)
         
-"""
-Add these functions to your views.py file
-"""
 
 @api_view(['GET', 'POST'])
 def print_patient_vitals(request, patient_id=None):

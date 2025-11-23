@@ -3,6 +3,9 @@ from django.utils import timezone
 from datetime import date
 from .utils import compute_patient_priority
 from django.contrib.auth.hashers import make_password, check_password
+from django.db import models
+from django.utils import timezone
+from django.db import transaction
 
 #ADDED STAFF USERNAME
 class HCStaff(models.Model):
@@ -83,7 +86,6 @@ class Patient(models.Model):
 
 class VitalSigns(models.Model):
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='vital_signs')
-    device_id = models.CharField(max_length=50, null=True, blank=True)
     date_time_recorded = models.DateTimeField(auto_now_add=True)
     heart_rate = models.IntegerField(null=True, blank=True)  # bpm
     temperature = models.FloatField(null=True, blank=True)  # °C
@@ -95,17 +97,12 @@ class VitalSigns(models.Model):
     
     def save(self, *args, **kwargs):
         """Auto-compute BMI if height and weight are provided"""
-        # Compute BMI if height (in cm) and weight (in kg) are provided
         if self.height and self.weight and self.height > 0:
             # Convert height from cm to meters
             height_m = self.height / 100
-            # Calculate BMI: weight (kg) / (height in meters)²
             self.bmi = round(self.weight / (height_m ** 2), 1)
         
         super().save(*args, **kwargs)
-
-from django.db import models
-from django.utils import timezone
 
 class QueueEntry(models.Model):
     STATUS_CHOICES = [
@@ -133,7 +130,6 @@ class QueueEntry(models.Model):
         ordering = ['-entered_at']
     
     def save(self, *args, **kwargs):
-        # UPDATE LAST VISIT when entering queue
         self.patient.last_visit = timezone.now()
         self.patient.save()
         
@@ -205,7 +201,6 @@ class QueueEntry(models.Model):
         self.status = 'SERVING'
         self.save()
 
-        
               
 class ArchivedPatient(models.Model):
     patient_id = models.CharField(max_length=15, primary_key=True)
@@ -222,22 +217,15 @@ class ArchivedPatient(models.Model):
     fingerprint_id = models.CharField(max_length=4, null=True, blank=True)
     last_visit = models.DateTimeField(null=True, blank=True)
     
-    archived_by = models.CharField(max_length=100, null=True, blank=True)
-    archive_reason = models.TextField(null=True, blank=True)
     archived_at = models.DateTimeField(auto_now_add=True)
     original_created_at = models.DateTimeField(null=True, blank=True)
-    
     
     class Meta:
         db_table = 'archived_patient'
         verbose_name = 'Archived Patient'
 
 class ArchivedVitalSigns(models.Model):
-    # Link to archived patient
     patient = models.ForeignKey(ArchivedPatient, on_delete=models.CASCADE, related_name='vital_signs')
-    
-    # Copy all VitalSigns fields
-    device_id = models.CharField(max_length=50, null=True, blank=True)
     date_time_recorded = models.DateTimeField()
     heart_rate = models.IntegerField(null=True, blank=True)
     temperature = models.FloatField(null=True, blank=True)
@@ -255,7 +243,6 @@ class ArchivedVitalSigns(models.Model):
 
 class ArchivedQueueEntry(models.Model):
     patient = models.ForeignKey(ArchivedPatient, on_delete=models.CASCADE, related_name='queue_entries')
-    
     priority_status = models.CharField(max_length=10)
     entered_at = models.DateTimeField()
     queue_number = models.CharField(max_length=10)
@@ -266,8 +253,6 @@ class ArchivedQueueEntry(models.Model):
     class Meta:
         db_table = 'archived_queue_entry'
 
-# In models.py or utils.py
-from django.db import transaction
 
 @transaction.atomic
 def archive_patient(patient_id, staff=None, reason=None):
@@ -298,8 +283,6 @@ def archive_patient(patient_id, staff=None, reason=None):
             pin=patient.pin,
             fingerprint_id=patient.fingerprint_id,
             last_visit=patient.last_visit,
-            archived_by=staff,
-            archive_reason=reason,
             original_created_at=timezone.now(),
         )
         
@@ -308,7 +291,6 @@ def archive_patient(patient_id, staff=None, reason=None):
         for vital in vitals:
             ArchivedVitalSigns.objects.create(
                 patient=archived_patient,
-                device_id=vital.device_id,
                 date_time_recorded=vital.date_time_recorded,
                 heart_rate=vital.heart_rate,
                 temperature=vital.temperature,
@@ -375,7 +357,6 @@ def restore_patient(patient_id):
         for vital in archived_vitals:
             VitalSigns.objects.create(
                 patient=patient,
-                device_id=vital.device_id,
                 date_time_recorded=vital.date_time_recorded,
                 heart_rate=vital.heart_rate,
                 temperature=vital.temperature,
