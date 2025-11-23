@@ -124,6 +124,10 @@ export default function QueueManagement() {
         credentials: 'include',
       })
       await fetchQueue()
+      
+      // Update the seven-segment display
+      await updateQueueDisplay()
+      
       setNow(0)
       setShowNowModal(true)
       setTimeout(() => setShowNowModal(false), 2000)
@@ -134,7 +138,6 @@ export default function QueueManagement() {
       setTimeout(() => setShowNowModal(false), 2000)
     }
   }
-
   const handleEmergency = async () => {
     setPopupMsg('Emergency patient: add via the main system with PRIORITY (E-code).')
     await fetchQueue()
@@ -174,6 +177,21 @@ export default function QueueManagement() {
   const NowServingBadge = () => {
     return null
   }
+
+  const updateQueueDisplay = async () => {
+    try {
+      await fetch(`${API_URL}/queue/update-display/`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch (error) {
+      console.error('Failed to update queue display:', error)
+    }
+  }
+
+  useEffect(() => {
+    updateQueueDisplay()
+  }, [queue])
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-10">

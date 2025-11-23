@@ -1743,3 +1743,80 @@ please proceed to the clinic area.
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+# Add this to your views.py
+
+@api_view(['POST'])
+def update_queue_display(request):
+    """
+    Send the current queue number to the seven-segment display
+    Call this whenever the queue updates
+    """
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Display connection error"}, status=500)
+    
+    try:
+        # Get the current serving queue number
+        queue_entry = QueueEntry.objects.filter(
+            status='SERVING'
+        ).first()
+        
+        if not queue_entry:
+            # If no one is being served, get the next waiting patient
+            queue_entry = QueueEntry.objects.filter(
+                status='WAITING'
+            ).order_by('priority_order', 'entered_at').first()
+        
+        queue_number = queue_entry.queue_number if queue_entry else 0
+        
+        # Send to Arduino
+        with _serial_lock:
+            command = f"{queue_number}\n"
+            ser.write(command.encode())
+            ser.flush()
+        
+        return Response({
+            "message": "Display updated",
+            "queue_number": queue_number
+        }, status=200)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def get_current_queue_for_display(request):
+    """
+    Get current queue number being served (for frontend to call)
+    """
+    try:
+        # Get currently serving patient
+        queue_entry = QueueEntry.objects.filter(
+            status='SERVING'
+        ).first()
+        
+        if not queue_entry:
+            # Get next waiting patient
+            queue_entry = QueueEntry.objects.filter(
+                status='WAITING'
+            ).annotate(
+                priority_order=Case(
+                    When(priority_status='CRITICAL', then=1),
+                    When(priority_status='HIGH', then=2),
+                    When(priority_status='MEDIUM', then=3),
+                    default=4,
+                    output_field=IntegerField()
+                )
+            ).order_by('priority_order', 'entered_at').first()
+        
+        queue_number = queue_entry.queue_number if queue_entry else 0
+        
+        return Response({
+            "queue_number": queue_number,
+            "patient_name": f"{queue_entry.patient.first_name} {queue_entry.patient.last_name}" if queue_entry else None,
+            "status": queue_entry.status if queue_entry else "EMPTY"
+        }, status=200)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
