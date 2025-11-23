@@ -770,9 +770,11 @@ def login(request):
             request.session["name"] = staff_member.name
 
             return Response({
+                
+                
                 "role": "staff",
                 "name": staff_member.name,
-                "staff_id": staff_member.staff_id
+                "staff_id": staff_member.id
             })
 
         except Exception as e:
