@@ -2,7 +2,7 @@ import base64
 from django.shortcuts import render  # Unused but kept if needed elsewhere
 from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny
-from rest_framework.decorators import action, api_view
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from .models import Patient, VitalSigns, HCStaff, QueueEntry, ArchivedPatient, ArchivedVitalSigns, ArchivedQueueEntry
 from .models import archive_patient, restore_patient
@@ -25,12 +25,15 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 
-SERIAL_PORT = 'COM8'  # Adjust if using ACM0
-BAUD_RATE = 115200
+SERIAL_PORT = 'COM5'  # Adjust if using ACM0    
+BAUD_RATE = 9600
 IS_SCANNING = False
 
 _serial_connection = None
 _serial_lock = threading.Lock()
+
+_display_connection = None
+_display_lock = threading.Lock()
 
 def get_serial():
     """Get persistent serial connection - never close it"""
@@ -1819,4 +1822,63 @@ def get_current_queue_for_display(request):
         }, status=200)
         
     except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+def get_display_serial():
+    global _display_connection
+    
+    with _display_lock:
+        if _display_connection is None or not _display_connection.is_open:
+            try:
+                _display_connection = serial.Serial(SERIAL_PORT, 9600, timeout=0.5)
+                time.sleep(2)
+                print(f"Display connected to {SERIAL_PORT}")
+            except Exception as e:
+                print(f"Display connection error: {e}")
+                return None
+        return _display_connection
+
+
+@csrf_exempt
+@permission_classes([AllowAny])
+@api_view(['POST'])
+def update_queue_display(request):
+    """Send current queue number to display"""
+    ser = get_display_serial()  # Use separate connection
+    if ser is None:
+        return Response({"error": "Display connection error"}, status=500)
+    
+    try:
+        # Get currently SERVING patient
+        queue_entry = QueueEntry.objects.filter(status='SERVING').first()
+        
+        if not queue_entry:
+            # Get next WAITING patient
+            queue_entry = QueueEntry.objects.filter(
+                status='WAITING'
+            ).annotate(
+                priority_order=Case(
+                    When(priority_status='CRITICAL', then=1),
+                    When(priority_status='HIGH', then=2),
+                    When(priority_status='MEDIUM', then=3),
+                    default=4,
+                    output_field=IntegerField()
+                )
+            ).order_by('priority_order', 'entered_at').first()
+        
+        queue_number = queue_entry.queue_number if queue_entry else 0
+        
+        with _display_lock:
+            ser.write(f"{queue_number}\n".encode())
+            ser.flush()
+            print(f"✅ Sent to display: {queue_number}")
+        
+        return Response({
+            "message": "Display updated",
+            "queue_number": queue_number
+        }, status=200)
+        
+    except Exception as e:
+        print(f"Display error: {e}")
         return Response({"error": str(e)}, status=500)

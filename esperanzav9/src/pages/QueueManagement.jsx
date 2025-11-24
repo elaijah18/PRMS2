@@ -180,7 +180,7 @@ export default function QueueManagement() {
 
   const updateQueueDisplay = async () => {
     try {
-      await fetch(`${API_URL}/queue/update-display/`, {
+      await fetch(`${API_URL}/update-display/`, {
         method: 'POST',
         credentials: 'include',
       })

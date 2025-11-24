@@ -60,8 +60,8 @@ urlpatterns = [
     path("print-pos58/", print_to_pos58, name='print_to_pos58'),
     path("print-vitals-and-queue/", print_vitals_and_queue_pos58),
     
-    path('queue/update-display/', update_queue_display, name='update_queue_display'),
-    path('queue/current-display/', get_current_queue_for_display, name='get_current_queue_display')
+    path('update-display/', update_queue_display, name='update_queue_display'),
+    path('current-display/', get_current_queue_for_display, name='get_current_queue_display')
 ]
 
 
