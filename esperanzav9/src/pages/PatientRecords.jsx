@@ -327,8 +327,9 @@ export default function PatientRecords() {
       last_name: patient.last_name || '',
       sex: patient.sex || 'Male',
       birthdate: patient.birthdate || patient.dob || '',
-      street: patient.street || '',
-      barangay: patient.barangay || '',
+      address: [patient.street, patient.barangay].filter(Boolean).join(', ') || '',
+      // street: patient.street || '',
+      // barangay: patient.barangay || '',
     }
     
     setCurrentPatient(patientToEdit)
@@ -395,7 +396,7 @@ export default function PatientRecords() {
                     <p className="text-sm" style={{ color: BRAND.text }}>
                       Patient ID: <span className="font-semibold">{p.patient_id || '—'}</span> • 
                       Contact: <span className="font-semibold">{p.contact || '—'}</span> • 
-                      Address: <span className="font-semibold">{p.address || '—'}</span>
+                      Address: <span className="font-semibold">{[p.street, p.barangay].filter(Boolean).join(', ') || '—'}</span>
                     </p>
                   </div>
                   <div className="flex gap-3">
