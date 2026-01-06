@@ -41,15 +41,33 @@ export default function PatientRecords() {
   
   try {
     const first_name = (currentPatient.first_name || '').trim()
-    const middle_name = (currentPatient.middle_name || '').trim() // Remove .charAt(0)
+    const middle_name = (currentPatient.middle_name || '').trim()
     const last_name = (currentPatient.last_name || '').trim()
+    const contact_clean = (currentPatient.contact || '').replace(/\D/g, '')
+
+    if (first_name.length < 1 || first_name.length > 50) {
+      setPopupMsg('First name must be 1-50 characters.')
+      return
+    }
+    if (middle_name.length > 50) {
+      setPopupMsg('Middle name must be 0-50 characters.')
+      return
+    }
+    if (last_name.length < 1 || last_name.length > 50) {
+      setPopupMsg('Last name must be 1-50 characters.')
+      return
+    }
+    if (contact_clean.length !== 11) {
+      setPopupMsg('Contact number must be exactly 11 digits.')
+      return
+    }
 
     const payload = {
-      first_name: first_name || 'Unknown',
-      last_name: last_name || 'Unknown', 
+      first_name,
+      last_name,
       sex: currentPatient.sex || 'Male',
       address: `${currentPatient.barangay || ''} ${currentPatient.street || ''}`.trim(),
-      contact: currentPatient.contact || '',
+      contact: contact_clean,
       pin: currentPatient.pin,
     }
     
