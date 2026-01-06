@@ -12,6 +12,7 @@ import weightIcon from '../assets/weight.png'
 import bmiIcon from '../assets/body-mass-index.png'
 import printIcon from '../assets/printer-green.png'
 import logoutIcon from '../assets/logout-green.png'
+import Popup from '../components/ErrorPopup'
 
 export default function Records() {
   const [profile, setProfile] = useState(null)
@@ -23,6 +24,7 @@ export default function Records() {
   const { username } = useParams()
   const nav = useNavigate()
   const printRef = useRef(null)
+  const [popupMsg, setPopupMsg] = useState('')
 
   // ---------- helpers ----------
   const calcAge = (dobStr) => {
@@ -156,7 +158,7 @@ export default function Records() {
         setLoading(false)
       } catch (err) {
         console.error('Error loading patient data:', err)
-        alert('Error loading patient data. Please login again.')
+        setPopupMsg('Error loading patient data. Please login again.')
         nav('/login')
       }
     }
@@ -188,7 +190,7 @@ export default function Records() {
       const patientId = profile?.patientId || sessionStorage.getItem('patient_id')
       
       if (!patientId) {
-        alert('Patient ID not found. Please refresh and try again.')
+        setPopupMsg('Patient ID not found. Please refresh and try again.')
         setIsPrinting(false)
         return
       }
@@ -213,7 +215,7 @@ export default function Records() {
       
     } catch (error) {
       console.error('Print error:', error)
-      alert('Failed to prepare print data. Using local data instead.')
+      setPopupMsg('Failed to prepare print data. Using local data instead.')
       setIsPrinting(false)
       // Fallback to original print method
       window.print()
@@ -226,7 +228,7 @@ export default function Records() {
       const patientId = profile?.patientId || sessionStorage.getItem('patient_id')
       
       if (!patientId) {
-        alert('Patient ID not found. Please refresh and try again.')
+        setPopupMsg('Patient ID not found. Please refresh and try again.')
         return
       }
       
@@ -253,7 +255,7 @@ export default function Records() {
       
     } catch (error) {
       console.error('PDF download error:', error)
-      alert('Failed to download PDF. Please try printing instead.')
+      setPopupMsg('Failed to download PDF. Please try printing instead.')
     }
   }
 
@@ -480,8 +482,8 @@ export default function Records() {
     try {
       const patientId = profile?.patientId || sessionStorage.getItem('patient_id');
       if (!patientId) {
-        alert("Patient ID not found.");
-        return;
+        setPopupMsg('Patient ID not found.')
+        return
       }
 
       const res = await fetch("http://localhost:8000/print-pos58/", {
@@ -492,13 +494,13 @@ export default function Records() {
 
       const data = await res.json();
       if (res.ok) {
-        alert("🖨️ Printed successfully to POS58 printer!");
+        setPopupMsg('🖨️ Printed successfully to POS58 printer!')
       } else {
-        alert("⚠️ Print failed: " + data.error);
+        setPopupMsg('⚠️ Print failed: ' + data.error)
       }
     } catch (err) {
-      console.error("POS58 print error:", err);
-      alert("Failed to send print command to printer.");
+      console.error('POS58 print error:', err)
+      setPopupMsg('Failed to send print command to printer.')
     }
   };
 
@@ -671,7 +673,8 @@ export default function Records() {
 
       {/* Enhanced Print Ticket */}
       <EnhancedPrintTicket />
-      
+
+      {popupMsg && <Popup msg={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

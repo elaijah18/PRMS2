@@ -9,6 +9,7 @@ import pinIcon from '../assets/dialpadalt.png'
 import fingerprintIcon from '../assets/fingerprint.png'
 import showPinIcon from '../assets/show.png'
 import hidePinIcon from '../assets/hide.png'
+import Popup from '../components/ErrorPopup'
 
 export default function LoginAuth() {
   const { state } = useLocation()
@@ -21,12 +22,13 @@ export default function LoginAuth() {
   const [username, setUsername] = useState('')
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [showPin, setShowPin] = useState(false)
+  const [popupMsg, setPopupMsg] = useState('')
 
 
   const authenticateUser = async (enteredPin, loginType) => {
     if (isAuthenticating) return
     if (loginType === 'patient' && username.trim().length === 0) {
-      alert('Please enter your username.')
+      setPopupMsg('Please enter your username.')
       return
     }
 
@@ -64,7 +66,7 @@ export default function LoginAuth() {
         nav('/staff')
       }
     } catch (err) {
-      alert(err.message || 'Authentication failed')
+      setPopupMsg(err.message || 'Authentication failed')
       setPin('')
     } finally {
       setIsAuthenticating(false)
@@ -169,10 +171,22 @@ export default function LoginAuth() {
 
             {/* PIN with conceal/reveal toggle*/}
             <div className="relative mt-2">
+            {/* Changed the readOnly to onChange*/}
             <input
               type={showPin ? 'text' : 'password'}
               value={pin}
-              readOnly
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, '').slice(0, 4)
+                setPin(value)
+                if (value.length === 4) {
+                  authenticateUser(value, role)
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && pin.length === 4) {
+                  authenticateUser(pin, role)
+                }
+              }}
               className="w-full rounded-xl border border-slate-300 px-4 py-3 pr-12 text-2xl tracking-widest text-center bg-white"
               inputMode="numeric"
               autoComplete="current-password"
@@ -212,6 +226,8 @@ export default function LoginAuth() {
           <FingerprintScanner onComplete={onFpDone} />
         </div>
       )}
+
+      {popupMsg && <Popup msg={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

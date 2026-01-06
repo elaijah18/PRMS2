@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import backIcon from '../assets/arrow.png'
 import accIcon from '../assets/account.png'
 import historyIcon from '../assets/history.png'
+import Popup from '../components/ErrorPopup'
 
 const BRAND = {
   bg: '#DCEBE8',
@@ -26,6 +27,7 @@ export default function PatientRecords() {
   const [latestVitals, setLatestVitals] = useState(null)
   const [history, setHistory] = useState([])
   const [bpInput, setBpInput] = useState('')
+  const [popupMsg, setPopupMsg] = useState('')
 
 
   const constructName = (patient) => {
@@ -80,14 +82,14 @@ export default function PatientRecords() {
       throw new Error(errorMsg)
     }
 
-    alert('Patient record updated successfully')
+    setPopupMsg('Patient record updated successfully')
     setEditing(false)
     
     const currentSearch = searchParams.get('q') || ''
     fetchPatients(currentSearch)
   } catch (err) {
     console.error('Failed to save:', err)
-    alert(`Failed to save record: ${err.message}`)
+    setPopupMsg(`Failed to save record: ${err.message}`)
   }
 }
 
@@ -108,7 +110,7 @@ export default function PatientRecords() {
       }
     } catch (err) {
       console.error('Failed to fetch patients:', err)
-      alert('Failed to fetch patients')
+      setPopupMsg('Failed to fetch patients')
     } finally {
       setLoading(false)
     }
@@ -237,11 +239,11 @@ export default function PatientRecords() {
       
       if (!res.ok) throw new Error('Failed to save blood pressure')
       
-      alert('Blood pressure saved successfully')
+      setPopupMsg('Blood pressure saved successfully')
       fetchVitals(currentPatient.patient_id) 
     } catch (err) {
       console.error('Failed to save BP:', err)
-      alert('Failed to save blood pressure')
+      setPopupMsg('Failed to save blood pressure')
     }
   }
 
@@ -313,7 +315,7 @@ export default function PatientRecords() {
         throw new Error(errorData.error || 'Failed to archive patient')
       }
       
-      alert('Patient archived successfully')
+      setPopupMsg('Patient archived successfully')
       
       setShowArchiveModal(false)
       setPatientToArchive(null)
@@ -329,7 +331,7 @@ export default function PatientRecords() {
       
     } catch (err) {
       console.error('Failed to archive patient:', err)
-      alert(`Failed to archive patient: ${err.message}`)
+      setPopupMsg(`Failed to archive patient: ${err.message}`)
     }
   }
   
@@ -692,6 +694,8 @@ export default function PatientRecords() {
         </div>
       </div>
       )}
+
+      {popupMsg && <Popup msg={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

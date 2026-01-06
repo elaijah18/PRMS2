@@ -8,6 +8,7 @@ import bgRegister from '../assets/bgreg.png'
 import fingerPrint from '../assets/fingerprint-sensor.png'
 import showPinIcon from '../assets/show.png'
 import hidePinIcon from '../assets/hide.png'
+import Popup from '../components/ErrorPopup'
 
 const months = [
   'January','February','March','April','May','June',
@@ -17,6 +18,7 @@ const months = [
 export default function Register() {
   const nav = useNavigate()
   const [creating, setCreating] = useState(false)
+  const [popupMsg, setPopupMsg] = useState('')
 
   // Name fields
   const [first_name, setFirstName] = useState('')
@@ -77,11 +79,11 @@ export default function Register() {
     e.preventDefault()
 
     if (requireFingerprint && fpStatus !== 'enrolled') {
-      alert('Please capture fingerprint before registering.')
+      setPopupMsg('Please capture fingerprint before registering.')
       return
     }
     if (!first_name.trim() || !last_name.trim()) {
-      alert('Please enter first and last name.')
+      setPopupMsg('Please enter first and last name.')
       return
     }
 
@@ -112,7 +114,7 @@ export default function Register() {
 
       if (!registerRes.ok) {
         const err = await registerRes.json().catch(() => ({}))
-        alert("Failed to register patient:\n" + JSON.stringify(err, null, 2))
+        setPopupMsg("Failed to register patient:\n" + JSON.stringify(err, null, 2))
         setCreating(false)
         return
       }
@@ -130,7 +132,7 @@ export default function Register() {
       })
 
       if (!loginRes.ok) {
-        alert("Registration successful but login failed. Please login manually.")
+        setPopupMsg("Registration successful but login failed. Please login manually.")
         setCreating(false)
         nav('/login')
         return
@@ -148,7 +150,7 @@ export default function Register() {
       setCreating(false)
       nav('/vitals/weight', { state: { afterCaptureGoTo: '/records' } })
     } catch (err) {
-      alert("Network error: " + (err?.message || err))
+      setPopupMsg("Network error: " + (err?.message || err))
       setCreating(false)
     }
   }
@@ -166,208 +168,199 @@ export default function Register() {
         </h2>
 
         <div className="grid gap-8 md:grid-cols-[2fr,1fr]">
-          <form onSubmit={submit} className="grid gap-6">
-            {/* Name */}
-            <div className="grid md:grid-cols-3 gap-6">
-              <div>
-                <label className="text-sm font-semibold text-slate-700">First Name</label>
-                <input
-                  value={first_name}
-                  onChange={e=>setFirstName(e.target.value)}
-                  required
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Middle Name</label>
-                <input
-                  value={middle_name}
-                  onChange={e=>{setMiddleName(e.target.value)
-                  }}
-                  placeholder="(optional)"
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Last Name</label>
-                <input
-                  value={last_name}
-                  onChange={e=>setLastName(e.target.value)}
-                  required
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                />
-              </div>
-            </div>
-
-            {/* Sex / Birthdate */}
-            <div className="grid md:grid-cols-3 gap-6">
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Sex</label>
-                <select
-                  value={sex}
-                  onChange={e=>setSex(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                >
-                  <option>Male</option>
-                  <option>Female</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-sm font-semibold text-slate-700">Birthdate</label>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <select
-                    value={month}
-                    onChange={e=>setMonth(e.target.value)}
-                    className="rounded-xl border border-slate-300 px-3 py-2.5"
-                  >
-                    {months.map(m => <option key={m}>{m}</option>)}
-                  </select>
-                  <select
-                    value={day}
-                    onChange={e=>setDay(Number(e.target.value))}
-                    className="rounded-xl border border-slate-300 px-3 py-2.5"
-                  >
-                    {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d}>{d}</option>)}
-                  </select>
-                  <select
-                    value={year}
-                    onChange={e=>setYear(Number(e.target.value))}
-                    className="rounded-xl border border-slate-300 px-3 py-2.5"
-                  >
-                    {Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                      <option key={y}>{y}</option>
-                    ))}
-                  </select>
+          <div className="grid gap-6">
+            <div>
+              {/* Name */}
+              <div className="grid md:grid-cols-3 gap-6 mb-6">
+                <div>
+                  <label className="text-sm font-semibold text-slate-700">First Name</label>
+                  <input
+                    value={first_name}
+                    onChange={e => setFirstName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}
+                    required
+                    disabled={creating}
+                    maxLength={50}
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-slate-700">Middle Name</label>
+                  <input
+                    value={middle_name}
+                    onChange={e => setMiddleName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}
+                    placeholder="(optional)"
+                    disabled={creating}
+                    maxLength={50}
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-slate-700">Last Name</label>
+                  <input
+                    value={last_name}
+                    onChange={e => setLastName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}                
+                    required
+                    disabled={creating}
+                    maxLength={50}
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
+                  />
                 </div>
               </div>
-            </div>
 
-            {/* Contact / Address */}
-            <div className="grid md:grid-cols-[1fr,2fr] gap-2 items-start md:items-center">
-              {/* Phone */}
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Phone Number</label>
-                <input
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  required
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                />
-              </div>
-
-              {/* Address Section */}
-              <div className="md:col-span-2">
-                <label className="text-sm font-semibold text-slate-700 block mb-2">Address</label>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Street */}
-                  <div>
-                    <input
-                      type="text"
-                      placeholder="Street / Building / House No."
-                      value={address.street}
-                      onChange={e => setAddress({ ...address, street: e.target.value })}
-                      className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                      required
-                    />
-                  </div>
-
-                  {/* Barangay */}
-                  <div>
+              {/* Sex / Birthdate */}
+              <div className="grid md:grid-cols-3 gap-6 mb-6">
+                <div>
+                  <label className="text-sm font-semibold text-slate-700">Sex</label>
+                  <select
+                    value={sex}
+                    onChange={e=>setSex(e.target.value)}
+                    disabled={creating}
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
+                  >
+                    <option>Male</option>
+                    <option>Female</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-sm font-semibold text-slate-700">Birthdate</label>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
                     <select
-                      value={address.barangay}
-                      onChange={e => setAddress({ ...address, barangay: e.target.value })}
-                      className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                      required
+                      value={month}
+                      onChange={e=>setMonth(e.target.value)}
+                      disabled={creating}
+                      className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                     >
-                      <option value="">Select Barangay</option>
-                      {Array.from({ length: 648 - 587 + 1 }, (_, i) => 587 + i).map(brgy => (
-                        <option key={brgy} value={`Barangay ${brgy}`}>
-                          Barangay {brgy}
-                        </option>
+                      {months.map(m => <option key={m}>{m}</option>)}
+                    </select>
+                    <select
+                      value={day}
+                      onChange={e=>setDay(Number(e.target.value))}
+                      disabled={creating}
+                      className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
+                    >
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d}>{d}</option>)}
+                    </select>
+                    <select
+                      value={year}
+                      onChange={e=>setYear(Number(e.target.value))}
+                      disabled={creating}
+                      className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
+                    >
+                      {Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                        <option key={y}>{y}</option>
                       ))}
                     </select>
                   </div>
+                </div>
+              </div>
 
-                  {/* City / Region / Country on same row */}
-                  <div className="grid grid-cols-3 gap-4 col-span-2">
-                    {/* City */}
-                    <input
-                      type="text"
-                      value="Manila"
-                      readOnly
-                      className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed"
-                    />
-                    {/* Region */}
-                    <input
-                      type="text"
-                      value="NCR"
-                      readOnly
-                      className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed"
-                    />
-                    {/* Country */}
-                    <input
-                      type="text"
-                      value="Philippines"
-                      readOnly
-                      className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed"
-                    />
+              {/* Contact / Address */}
+              <div className="grid md:grid-cols-[1fr,2fr] gap-2 items-start md:items-center mb-6">
+                <div>
+                  <label className="text-sm font-semibold text-slate-700">Phone Number</label>
+                  <input
+                    value={phone}
+                    onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                    required
+                    disabled={creating}
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-sm font-semibold text-slate-700 block mb-2">Address</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Street / Building / House No."
+                        value={address.street}
+                        onChange={e => setAddress({ ...address, street: e.target.value })}
+                        disabled={creating}
+                        className="w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <select
+                        value={address.barangay}
+                        onChange={e => setAddress({ ...address, barangay: e.target.value })}
+                        disabled={creating}
+                        className="w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
+                        required
+                      >
+                        <option value="">Select Brgy.</option>
+                        <option value="1">Brgy. 587</option>
+                        <option value="1-A">Brgy. 587-A</option>
+                        {Array.from({ length: 61 }, (_, i) => 588 + i).map(brgy => (
+                          <option key={brgy} value={brgy - 586}>
+                            Brgy. {brgy}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 col-span-2">
+                      <input type="text" value="Manila" readOnly className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed" />
+                      <input type="text" value="NCR" readOnly className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed" />
+                      <input type="text" value="Philippines" readOnly className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed" />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-
-            {/* Username / PIN */}
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Username</label>
-                <input
-                  value={username}
-                  onChange={e=>setUsername(e.target.value)}
-                  required
-                  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-slate-700">4-Digit PIN</label>
-                <div className="relative mt-2">
+              {/* Username / PIN */}
+              <div className="grid md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="text-sm font-semibold text-slate-700">Username</label>
                   <input
-                    value={pin}
-                    onChange={e=>setPin(e.target.value.replace(/\D/g, '').slice(0,4))}
+                    value={username}
+                    onChange={e=>setUsername(e.target.value)}
                     required
-                    maxLength={4}
-                    inputMode="numeric"
-                    pattern="\d{4}"
-                    type={showPin ? 'text' : 'password'}
-                    className="mt-0 w-full rounded-xl border border-slate-300 px-4 py-2.5 pr-12"
-                    autoComplete="new-password"
+                    disabled={creating}
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPin(s => !s)}
-                    className="absolute inset-y-0 right-2 my-auto h-9 w-9 grid place-items-center rounded-md hover:bg-slate-100"
-                  >
-                    <img
-                      src={showPin ? hidePinIcon : showPinIcon}
-                      alt="toggle pin"
-                      className="h-5 w-5 object-contain select-none pointer-events-none"
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-slate-700">4-Digit PIN</label>
+                  <div className="relative mt-2">
+                    <input
+                      value={pin}
+                      onChange={e=>setPin(e.target.value.replace(/\D/g, '').slice(0,4))}
+                      required
+                      maxLength={4}
+                      inputMode="numeric"
+                      pattern="\d{4}"
+                      type={showPin ? 'text' : 'password'}
+                      disabled={creating}
+                      className="w-full rounded-xl border border-slate-300 px-4 py-2.5 pr-12 disabled:opacity-50"
+                      autoComplete="new-password"
                     />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPin(s => !s)}
+                      className="absolute inset-y-0 right-2 my-auto h-9 w-9 grid place-items-center rounded-md hover:bg-slate-100"
+                    >
+                      <img
+                        src={showPin ? hidePinIcon : showPinIcon}
+                        alt="toggle pin"
+                        className="h-5 w-5 object-contain select-none pointer-events-none"
+                      />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="text-right">
-              <button
-                type="submit"
-                disabled={creating || (requireFingerprint && fpStatus !== 'enrolled')}
-                className="mt-6 bg-[#6ec1af] hover:bg-emerald-800/70 disabled:opacity-60 text-white font-bold px-8 py-3 rounded-xl shadow-md"
-              >
-                {creating ? 'Creating Account...' : 'Register'}
-              </button>
+              <div className="text-right">
+                <button
+                  onClick={submit}
+                  disabled={creating}
+                  className="mt-6 bg-[#6ec1af] hover:bg-emerald-600 disabled:opacity-60 text-white font-bold px-8 py-3 rounded-xl shadow-md transition-colors"
+                >
+                  {creating ? 'Creating Account...' : 'Register'}
+                </button>
+              </div>
             </div>
-          </form>
+          </div>
 
           {/* Biometric Card (Demo Only) */}
           <aside className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6">
@@ -421,6 +414,8 @@ export default function Register() {
           </aside>
         </div>
       </div>
+
+      {popupMsg && <Popup msg={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

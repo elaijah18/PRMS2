@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom' // ✅ Added use
 import backIcon from '../assets/arrow.png'
 import accIcon from '../assets/account.png'
 import searchIcon from '../assets/search.png'
+import Popup from '../components/ErrorPopup'
 
 const TEAL = '#406E65'
 const TABLE_BG = '#DCEBE8'
@@ -25,6 +26,7 @@ export default function Reports() {
   const [query, setQuery] = useState(searchParams.get('q') || '') 
   const [patients, setPatients] = useState([])
   const [loading, setLoading] = useState(true)
+  const [popupMsg, setPopupMsg] = useState('')
 
   useEffect(() => {
     fetchPatients()
@@ -62,7 +64,7 @@ export default function Reports() {
       setPatients(data)
     } catch (err) {
       console.error('Failed to fetch patients:', err)
-      alert('Failed to fetch patient records')
+      setPopupMsg('Failed to fetch patient records')
     } finally {
       setLoading(false)
     }
