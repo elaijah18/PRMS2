@@ -398,7 +398,7 @@ export default function QueueManagement() {
         </div>
       )}
 
-      {popupMsg && <Popup msg={popupMsg} onClose={() => setPopupMsg('')} />}
+      {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }

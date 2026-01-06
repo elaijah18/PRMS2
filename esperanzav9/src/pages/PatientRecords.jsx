@@ -28,6 +28,7 @@ export default function PatientRecords() {
   const [history, setHistory] = useState([])
   const [bpInput, setBpInput] = useState('')
   const [popupMsg, setPopupMsg] = useState('')
+  const [errors, setErrors] = useState({})
 
 
   const constructName = (patient) => {
@@ -37,45 +38,58 @@ export default function PatientRecords() {
   }
 
   const saveProfile = async () => {
-  if (!currentPatient) return
+  if (!currentPatient) return false
   
   try {
     const first_name = (currentPatient.first_name || '').trim()
     const middle_name = (currentPatient.middle_name || '').trim()
     const last_name = (currentPatient.last_name || '').trim()
-    const contact_clean = (currentPatient.contact || '').replace(/\D/g, '')
+    const cleanedPhone = (currentPatient.contact || '').replace(/\D/g, '').slice(0, 11)
+    const trimmedStreet = (currentPatient.street || '').trim()
+    const trimmedBarangay = (currentPatient.barangay || '').trim()
+    const trimmedAddress = (currentPatient.address || `${trimmedBarangay} ${trimmedStreet}`).trim()
+    const birthdate = (currentPatient.birthdate || '').trim()
+    const sex = (currentPatient.sex || '').trim()
 
-    if (first_name.length < 1 || first_name.length > 50) {
-      setPopupMsg('First name must be 1-50 characters.')
-      return
+    const newErrors = {}
+    if (!first_name) newErrors.first_name = 'First name is required.'
+    else if (first_name.length > 50) newErrors.first_name = 'First name must be 1-50 characters.'
+
+    if (middle_name.length > 50) newErrors.middle_name = 'Middle name must be 0-50 characters.'
+
+    if (!last_name) newErrors.last_name = 'Last name is required.'
+    else if (last_name.length > 50) newErrors.last_name = 'Last name must be 1-50 characters.'
+
+    if (!cleanedPhone) newErrors.phone = 'Phone number is required.'
+    else if (cleanedPhone.length !== 11) newErrors.phone = 'Phone number must be 11 digits.'
+
+    if (!trimmedStreet && !trimmedAddress) newErrors.street = 'Street address is required.'
+    if (!trimmedBarangay && !trimmedAddress) newErrors.barangay = 'Please select a barangay.'
+    if (!sex) newErrors.sex = 'Please select sex.'
+    if (!birthdate) newErrors.birthdate = 'Please select birthdate.'
+
+    if (Object.keys(newErrors).length) {
+      setErrors(newErrors)
+      setPopupMsg('Please make sure everything is filled out correctly before saving.')
+      return false
     }
-    if (middle_name.length > 50) {
-      setPopupMsg('Middle name must be 0-50 characters.')
-      return
-    }
-    if (last_name.length < 1 || last_name.length > 50) {
-      setPopupMsg('Last name must be 1-50 characters.')
-      return
-    }
-    if (contact_clean.length !== 11) {
-      setPopupMsg('Contact number must be exactly 11 digits.')
-      return
-    }
+
+    setErrors({})
 
     const payload = {
-      first_name,
-      last_name,
-      sex: currentPatient.sex || 'Male',
-      address: `${currentPatient.barangay || ''} ${currentPatient.street || ''}`.trim(),
-      contact: contact_clean,
+      first_name: first_name || 'Unknown',
+      last_name: last_name || 'Unknown', 
+      sex: sex || 'Male',
+      address: trimmedAddress,
+      contact: cleanedPhone,
       pin: currentPatient.pin,
     }
     
     if (middle_name) {
-      payload.middle_name = middle_name || ''
+      payload.middle_name = middle_name
     }
-    if (currentPatient.birthdate) {
-      payload.birthdate = currentPatient.birthdate
+    if (birthdate) {
+      payload.birthdate = birthdate
     }
 
     const res = await fetch(`http://localhost:8000/patients/${currentPatient.patient_id}/`, {
@@ -105,9 +119,11 @@ export default function PatientRecords() {
     
     const currentSearch = searchParams.get('q') || ''
     fetchPatients(currentSearch)
+    return true
   } catch (err) {
     console.error('Failed to save:', err)
     setPopupMsg(`Failed to save record: ${err.message}`)
+    return false
   }
 }
 
@@ -242,14 +258,29 @@ export default function PatientRecords() {
   }
 
   const saveBp = async () => {
-    if (!bpInput.trim() || !currentPatient) return
+    if (!currentPatient) {
+      setPopupMsg('No patient selected')
+      return
+    }
+    
+    if (!bpInput.trim()) {
+      setPopupMsg('Please enter blood pressure')
+      return
+    }
+    
+    const bpPattern = /^\d{2,3}\/\d{2}$/
+    if (!bpPattern.test(bpInput.trim())) {
+      setPopupMsg('Blood pressure must be in format xxx/xx (e.g. 120/80)')
+      return
+    }
     
     try {
-      const res = await fetch(`http://localhost:8000/patients/${currentPatient.patient_id}/vitals/`, {
+      const res = await fetch(`http://localhost:8000/receive-vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          patient_id: currentPatient.patient_id,
           blood_pressure: bpInput.trim(),
           date: new Date().toISOString().split('T')[0],
         }),
@@ -266,7 +297,11 @@ export default function PatientRecords() {
   }
 
   const handleFinish = async () => {
-    await saveProfile()
+    const success = await saveProfile()
+    
+    if (!success) {
+      return
+    }
     
     setEditing(false)
     setCurrentPatient(null)
@@ -470,6 +505,7 @@ export default function PatientRecords() {
                             style={{ borderColor: BRAND.border }}
                             required
                           />
+                          {errors.first_name && <p className="mt-1 text-xs text-red-600">{errors.first_name}</p>}
                         </td>
                         <th className="px-4 py-3 text-left w-40">Middle Name</th>
                         <td className="px-4 py-3">
@@ -483,6 +519,7 @@ export default function PatientRecords() {
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
                           />
+                          {errors.middle_name && <p className="mt-1 text-xs text-red-600">{errors.middle_name}</p>}
                         </td>
                       </tr>
 
@@ -498,6 +535,7 @@ export default function PatientRecords() {
                             style={{ borderColor: BRAND.border }}
                             required
                           />
+                          {errors.last_name && <p className="mt-1 text-xs text-red-600">{errors.last_name}</p>}
                         </td>
                         <th className="px-4 py-3 text-left w-40">Sex</th>
                         <td className="px-4 py-3">
@@ -512,6 +550,7 @@ export default function PatientRecords() {
                             <option>Male</option>
                             <option>Female</option>
                           </select>
+                          {errors.sex && <p className="mt-1 text-xs text-red-600">{errors.sex}</p>}
                         </td>
                       </tr>
 
@@ -526,6 +565,7 @@ export default function PatientRecords() {
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
                           />
+                          {errors.street && <p className="mt-1 text-xs text-red-600">{errors.street}</p>}
                         </td>
                         <th className="px-4 py-3 text-left">Birthdate</th>
                         <td className="px-4 py-3">
@@ -538,6 +578,7 @@ export default function PatientRecords() {
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
                           />
+                          {errors.birthdate && <p className="mt-1 text-xs text-red-600">{errors.birthdate}</p>}
                         </td>
                       </tr>
 
@@ -552,6 +593,7 @@ export default function PatientRecords() {
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
                           />
+                          {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
                         </td>
                         <th className="px-4 py-3 text-left">Patient ID</th>
                         <td className="px-4 py-3">
@@ -598,11 +640,32 @@ export default function PatientRecords() {
                     <label className="min-w-[10rem] font-semibold">BP (mmHg)</label>
                     <input
                       value={bpInput}
-                      onChange={(e) => setBpInput(e.target.value)}
+                      onChange={(e) => {
+                        let value = e.target.value;
+
+                        // Remove all characters except digits and slash
+                        value = value.replace(/[^\d/]/g, "");
+
+                        // Prevent more than ONE slash
+                        const parts = value.split("/");
+                        if (parts.length > 2) return;
+
+                        // Limit systolic (before slash) to 3 digits
+                        if (parts[0].length > 3) parts[0] = parts[0].slice(0, 3);
+
+                        // Limit diastolic (after slash) to 2 digits
+                        if (parts[1]?.length > 2) parts[1] = parts[1].slice(0, 2);
+
+                        // Combine back
+                        value = parts.join("/");
+
+                        setBpInput(value);
+                      }}
                       placeholder="e.g. 120/80"
                       className="rounded-lg border px-3 py-2 bg-white flex-1"
                       style={{ borderColor: BRAND.border }}
                     />
+                    
                     <button
                       type="button"
                       onClick={saveBp}
@@ -713,7 +776,7 @@ export default function PatientRecords() {
       </div>
       )}
 
-      {popupMsg && <Popup msg={popupMsg} onClose={() => setPopupMsg('')} />}
+      {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )
 }
