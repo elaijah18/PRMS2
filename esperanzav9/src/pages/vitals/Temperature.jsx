@@ -1,77 +1,29 @@
-// Temperature.jsx
-// Fetches real temperature data from Arduino via Django API
-
-import React, { useState, useEffect } from 'react';
+// Temperature.jsx — revised with mock data
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
 import ResultCard from '../../components/ResultCard';
 import TemperaturePic from '../../assets/temperature.png';
+import { SESSION_KEYS, initModalDelay } from './utils';
 
 export default function Temperature() {
   const nav = useNavigate();
   const [temp, setTemp] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [showInit, setShowInit] = useState(false);
-  const [error, setError] = useState('');
-  const [fetching, setFetching] = useState(false);
+  const API_BASE = 'http://localhost:8000';
 
-  const API_BASE = 'http://localhost:8000/api';
-
-  // 🔹 Start the Arduino sensor when user clicks Start
-const handleStart = async () => {
-  setLoading(true);
-  setError('');
-  setTemp(null);
-
-  try {
-    const res = await fetch(`${API_BASE}/start_vitals/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    const data = await res.json();
-    console.log("🔥 Response from Django:", data);
-
-    if (res.ok && data.temperature !== undefined) {
-      const tempValue = Number(data.temperature.toFixed(1));
-      setTemp(tempValue);
-      sessionStorage.setItem('temperature', String(tempValue));
-      console.log('🌡️ Current temperature:', tempValue);
-    } else {
-      setError('No temperature data received from backend.');
-    }
-  } catch (err) {
-    console.error('Error fetching temperature:', err);
-    setError('Failed to connect to backend.');
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // 🔹 Fetch latest temperature from Raspberry Pi Django API
-  const fetchTemperature = async () => {
-    try {
-      const res = await fetch('/api/start-sensor/', { method: 'POST' })
-      const data = await res.json();
-
-      if (res.ok && data.temperature !== undefined) {
-        const tempValue = Number(data.temperature.toFixed(1));
-        setTemp(tempValue);
-        sessionStorage.setItem('temperature', String(tempValue));
-        console.log('🌡️ Current temperature:', tempValue);
-      } else {
-        console.warn('⚠️ No temperature data received:', data);
-        setError('No temperature data received from Arduino.');
-      }
-    } catch (err) {
-      console.error('Fetch error:', err);
-      setError('Cannot connect to Raspberry Pi API.');
-    }
+  const start = () => {
+    setShowInit(true);
+    setTimeout(() => {
+      setShowInit(false);
+      // Mock reading: temperature between 36.0-37.5°C (normal body temperature range)
+      const temperature = Math.round((36.0 + Math.random() * 1.5) * 10) / 10;
+      setTemp(temperature);
+      sessionStorage.setItem(SESSION_KEYS.temperature, String(temperature));
+      saveTemperature(temperature);
+    }, initModalDelay);
   };
 
-  // 🔹 Auto-fetch temperature every second once started
-
-  // 🔹 Save temperature to backend (optional)
   const saveTemperature = async (temperatureValue) => {
     try {
       const patientId = sessionStorage.getItem('patient_id');
@@ -80,19 +32,26 @@ const handleStart = async () => {
         return;
       }
 
-      const response = await fetch(`${API_BASE}/receive_vital_signs/`, {
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
+
+      const response = await fetch(`${API_BASE}/receive-vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           patient_id: patientId,
           temperature: temperatureValue,
+          id: currentVitalId || null,
         }),
       });
 
       const result = await response.json();
+
       if (response.ok) {
         console.log('Temperature saved:', result);
+        if (result.data && result.data.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
       } else {
         console.error('Failed to save temperature:', result);
       }
@@ -122,29 +81,20 @@ const handleStart = async () => {
         </div>
       )}
 
-      {/* 🔹 START BUTTON */}
       {!ready ? (
         <div className="mt-8 text-center">
           <button
-            onClick={handleStart}
-            disabled={loading}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60"
+            onClick={start}
+            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
           >
-            {loading ? 'Starting…' : 'Start'}
+            Start
           </button>
-
-          {error && <p className="mt-3 text-red-600 font-medium">{error}</p>}
-          {loading && <p className="mt-3 text-slate-600">Initializing sensor…</p>}
         </div>
       ) : (
-        // 🔹 Once temperature is ready
         <div className="mt-8 space-y-6 text-center">
           <ResultCard label="Temperature" value={temp} unit="°C" />
           <button
-            onClick={() => {
-              saveTemperature(temp);
-              nav('/vitals/bp');
-            }}
+            onClick={() => nav('/vitals/bp')}
             className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
           >
             Continue
@@ -152,10 +102,9 @@ const handleStart = async () => {
         </div>
       )}
 
-      {/* Small loading modal */}
       <SmallModal open={showInit}>
-        <p className="text-xl font-semibold text-slate-800">Initializing temperature…</p>
-        <p className="mt-1 text-slate-600">Hold steady.</p>
+        <p className="text-xl font-semibold text-[#406E65]">Initializing temperature…</p>
+        <p className="mt-1 text-[#406E65]">Hold steady.</p>
       </SmallModal>
     </section>
   );

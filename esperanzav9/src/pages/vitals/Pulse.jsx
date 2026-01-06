@@ -1,4 +1,4 @@
-// Pulse.jsx
+// Pulse.jsx — revised with mock data
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
@@ -10,46 +10,63 @@ export default function Pulse() {
   const nav = useNavigate();
   const [hr, setHr] = useState(null);
   const [spo2, setSpo2] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [showInit, setShowInit] = useState(false);
+  const API_BASE = 'http://localhost:8000';
 
-  const API_BASE = 'http://localhost:8000/api';
-
-  const handleStart = async () => {
-    setLoading(true);
-    setError('');
+  const start = () => {
     setShowInit(true);
-    setHr(null);
-    setSpo2(null);
+    setTimeout(() => {
+      setShowInit(false);
+      // Mock readings
+      // Heart rate: 60-100 bpm (normal resting range)
+      const heartRate = Math.round(60 + Math.random() * 40);
+      // SpO2: 95-100% (normal range)
+      const oxygenSaturation = Math.round(95 + Math.random() * 5);
+      
+      setHr(heartRate);
+      setSpo2(oxygenSaturation);
+      
+      sessionStorage.setItem(SESSION_KEYS.hr, String(heartRate));
+      sessionStorage.setItem(SESSION_KEYS.spo2, String(oxygenSaturation));
+      
+      savePulseData(heartRate, oxygenSaturation);
+    }, initModalDelay);
+  };
 
+  const savePulseData = async (heartRate, oxygenSaturation) => {
     try {
-      const res = await fetch(`${API_BASE}/start_vitals/`, {
+      const patientId = sessionStorage.getItem('patient_id');
+      if (!patientId) {
+        console.warn('No patient_id found in session.');
+        return;
+      }
+
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
+
+      const response = await fetch(`${API_BASE}/receive-vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          patient_id: patientId,
+          heart_rate: heartRate,
+          spo2: oxygenSaturation,
+          id: currentVitalId || null,
+        }),
       });
 
-      const data = await res.json();
-      console.log('🔥 Response from Django:', data);
+      const result = await response.json();
 
-      if (res.ok) {
-        const heartRate = data.heart_rate;
-        const oxygenSaturation = data.spo2;
-
-        setHr(heartRate);
-        setSpo2(oxygenSaturation);
-
-        sessionStorage.setItem(SESSION_KEYS.hr, String(heartRate));
-        sessionStorage.setItem(SESSION_KEYS.spo2, String(oxygenSaturation));
+      if (response.ok) {
+        console.log('Pulse data saved:', result);
+        if (result.data && result.data.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
       } else {
-        setError(data.error || 'Failed to get pulse data.');
+        console.error('Failed to save pulse data:', result);
       }
     } catch (err) {
-      console.error('Error fetching pulse data:', err);
-      setError('Error connecting to pulse sensor.');
-    } finally {
-      setLoading(false);
-      setTimeout(() => setShowInit(false), initModalDelay);
+      console.error('Error saving pulse data:', err);
     }
   };
 
@@ -77,14 +94,11 @@ export default function Pulse() {
       {!ready ? (
         <div className="mt-8 text-center">
           <button
-            onClick={handleStart}
-            disabled={loading}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60"
+            onClick={start}
+            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
           >
-            {loading ? 'Starting…' : 'Start'}
+            Start
           </button>
-          {error && <p className="mt-3 text-red-600 font-medium">{error}</p>}
-          {loading && <p className="mt-3 text-slate-600">Initializing pulse sensor…</p>}
         </div>
       ) : (
         <div className="mt-8 grid gap-6 md:grid-cols-2">
@@ -102,8 +116,8 @@ export default function Pulse() {
       )}
 
       <SmallModal open={showInit}>
-        <p className="text-xl font-semibold text-slate-800">Initializing pulse…</p>
-        <p className="mt-1 text-slate-600">Keep your hand still.</p>
+        <p className="text-xl font-semibold text-[#406E65]">Initializing pulse…</p>
+        <p className="mt-1 text-[#406E65]">Keep your hand still.</p>
       </SmallModal>
     </section>
   );

@@ -73,34 +73,20 @@ class QueueEntrySerializer(serializers.ModelSerializer):
         ] 
     
     def get_latest_vitals(self, obj):
-        """Get the latest vital signs for the patient in this queue entry"""
-        from django.db.models import Max
-        
-        # Get today's date range
-        today = timezone.now().date()
-        today_start = timezone.make_aware(
-            timezone.datetime.combine(today, timezone.datetime.min.time())
-        )
-        today_end = timezone.make_aware(
-            timezone.datetime.combine(today, timezone.datetime.max.time())
-        )
-        
-        # Get latest vitals from today
+        """Get the latest vital signs for the patient (most recent, any date)"""
         latest_vital = VitalSigns.objects.filter(
-            patient=obj.patient,
-            date_time_recorded__range=(today_start, today_end)
+            patient=obj.patient
         ).order_by('-date_time_recorded').first()
         
         if not latest_vital:
             return None
         
-        # Use the BMI property from the model
         return {
-            'pulse_rate': latest_vital.pulse_rate,  # CHANGED: heart_rate -> pulse_rate
+            'pulse_rate': latest_vital.pulse_rate,
             'temperature': latest_vital.temperature,
             'oxygen_saturation': latest_vital.oxygen_saturation,
             'blood_pressure': latest_vital.blood_pressure,
             'height': latest_vital.height,
             'weight': latest_vital.weight,
-            'bmi': latest_vital.bmi  # Uses the @property from model
+            'bmi': latest_vital.bmi
         }

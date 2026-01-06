@@ -46,7 +46,7 @@ export default function PatientRecords() {
       first_name: first_name || 'Unknown',
       last_name: last_name || 'Unknown', 
       sex: currentPatient.sex || 'Male',
-      address: currentPatient.address || '',
+      address: `${currentPatient.barangay || ''} ${currentPatient.street || ''}`.trim(),
       contact: currentPatient.contact || '',
       pin: currentPatient.pin,
     }
@@ -381,7 +381,7 @@ export default function PatientRecords() {
                     <p className="text-sm" style={{ color: BRAND.text }}>
                       Patient ID: <span className="font-semibold">{p.patient_id || '—'}</span> • 
                       Contact: <span className="font-semibold">{p.contact || '—'}</span> • 
-                      Address: <span className="font-semibold">{p.street || '—'}</span>
+                      Address:{' '} <span className="font-semibold"> {`${p.barangay ?? ''} ${p.street ?? ''}`.trim() || '—'}</span>
                     </p>
                   </div>
                   <div className="flex gap-3">
@@ -499,7 +499,7 @@ export default function PatientRecords() {
                         <th className="px-4 py-3 text-left">Address</th>
                         <td className="px-4 py-3">
                           <input
-                            value={currentPatient.address || ''}
+                            value={`${currentPatient.barangay ?? ''} ${currentPatient.street ?? ''}`.trim()}
                             onChange={(e) =>
                               setCurrentPatient({ ...currentPatient, address: e.target.value })
                             }

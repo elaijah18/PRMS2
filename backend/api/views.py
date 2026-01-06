@@ -805,14 +805,12 @@ def login(request):
                 return Response({"error": "Invalid staff PIN"}, status=status.HTTP_401_UNAUTHORIZED)
 
             # CREATE SESSION (server-side)
-            request.session["user_id"] = staff_member.id
+            request.session["user_id"] = staff_member.staff_id
             request.session["user_type"] = "staff"
-            request.session["name"] = staff_member.name
 
             return Response({
                 "role": "staff",
-                "name": staff_member.name,
-                "staff_id": staff_member.staff_id if hasattr(staff_member, 'staff_id') else staff_member.id
+                "staff_id": staff_member.staff_id if hasattr(staff_member, 'staff_id') else staff_member.staff_id
             })
 
         except Exception as e:
@@ -998,9 +996,9 @@ class QueueViewSet(viewsets.ModelViewSet):
             status='WAITING'  # Only show waiting patients
         ).select_related('patient').annotate(
             priority_order=Case(
-                When(priority='CRITICAL', then=1),
-                When(priority='HIGH', then=2),
-                When(priority='MEDIUM', then=3),
+                When(priority_status='CRITICAL', then=1),
+                When(priority_status='HIGH', then=2),
+                When(priority_status='MEDIUM', then=3),
                 default=4,
                 output_field=IntegerField()
             )

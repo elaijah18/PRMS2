@@ -34,61 +34,78 @@ export default function QueueManagement() {
 
   // Fetch queue data (only WAITING patients from backend)
   const fetchQueue = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch(`${API_URL}/queue/current_queue/`, {
-        credentials: 'include',
-      })
-      if (!response.ok) throw new Error('Failed to fetch queue')
+  try {
+    setLoading(true)
+    const response = await fetch(`${API_URL}/queue/current_queue/`, {
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error('Failed to fetch queue')
 
-      const data = await response.json()
+    const data = await response.json()
+    
+    // 🔍 DEBUG: Log everything
+    console.log('=== FULL BACKEND RESPONSE ===')
+    console.log('Data:', data)
+    console.log('First entry:', data[0])
+    console.log('First entry patient:', data[0]?.patient)
+    console.log('First entry latest_vitals:', data[0]?.latest_vitals)
+    console.log('===========================')
 
-      // Transform backend data to match component format
-      const transformedQueue = (Array.isArray(data) ? data : []).map((entry, index) => {
-        const patient = entry.patient
-        const vitals = entry.latest_vitals || {}
-
-        return {
-          id: entry.id,
-          queueId: entry.id,
-
-          // Use the actual queue number from database
-          queue_number: entry.queue_number || '000',
-          priority_status: (entry.priority_status || 'NORMAL').toUpperCase(),
-          priority_code: entry.priority_code || null,
-          status: entry.status || 'WAITING',
-          patientId: patient?.patient_id || '—',
-          patientDbId: patient?.id,
-          name: patient ? `${patient.first_name} ${patient.last_name}`.toUpperCase() : 'UNKNOWN',
-          sex: patient?.sex || '—',
-          address: patient?.address || '—',
-          contact: patient?.contact_number || '—',
-          date: patient?.date_of_birth || '—',
-          enteredAt: entry.entered_at,
-
-          vitals: {
-            height: vitals.height ?? vitals.height_cm ?? null,
-            weight: vitals.weight ?? vitals.weight_kg ?? null,
-            hr: vitals.hr ?? vitals.heart_rate ?? null,
-            bp: vitals.bp ?? vitals.blood_pressure ?? null,
-            temp: vitals.temp ?? vitals.temperature ?? null,
-            spo2: vitals.spo2 ?? vitals.oxygen_saturation ?? null,
-            bmi: vitals.bmi ?? null,
-          },
-        }
+    // Transform backend data to match component format
+    const transformedQueue = (Array.isArray(data) ? data : []).map((entry, index) => {
+      const patient = entry.patient || {}
+      const vitals = entry.latest_vitals || {}
+      
+      // 🔍 DEBUG: Log for each entry
+      console.log(`Entry ${index}:`, {
+        queue_id: entry.queue_id,
+        patient_id: patient.patient_id,
+        vitals: vitals
       })
 
-      setQueue(transformedQueue)
-      // Keep "now" within bounds after refresh
-      setNow((n) => Math.min(n, Math.max(transformedQueue.length - 1, 0)))
-    } catch (error) {
-      console.error('Error fetching queue:', error)
-      setQueue([])
-      setNow(0)
-    } finally {
-      setLoading(false)
-    }
+      return {
+        id: entry.queue_id,
+        queueId: entry.queue_id,
+        queue_number: entry.queue_number || '000',
+        priority_status: (entry.priority_status || 'NORMAL').toUpperCase(),
+        priority_code: entry.priority_code || null,
+        status: entry.status || 'WAITING',
+        patientId: patient.patient_id || '—',
+        patientDbId: patient.id,
+        name: patient.first_name && patient.last_name 
+          ? `${patient.first_name} ${patient.last_name}`.toUpperCase() 
+          : 'UNKNOWN',
+        sex: patient.sex || '—',
+        address: patient.street || '—',
+        contact: patient.contact || '—',
+        date: patient.birthdate || '—',
+        enteredAt: entry.entered_at,
+
+        vitals: {
+          height: vitals.height ?? null,
+          weight: vitals.weight ?? null,
+          hr: vitals.pulse_rate ?? null,
+          bp: vitals.blood_pressure ?? null,
+          temp: vitals.temperature ?? null,
+          spo2: vitals.oxygen_saturation ?? null,
+          bmi: vitals.bmi ?? null,
+        },
+      }
+    })
+    
+    console.log('Transformed queue:', transformedQueue)
+    console.log('First transformed entry vitals:', transformedQueue[0]?.vitals)
+
+    setQueue(transformedQueue)
+    setNow((n) => Math.min(n, Math.max(transformedQueue.length - 1, 0)))
+  } catch (error) {
+    console.error('Error fetching queue:', error)
+    setQueue([])
+    setNow(0)
+  } finally {
+    setLoading(false)
   }
+}
 
   useEffect(() => {
     fetchQueue()
