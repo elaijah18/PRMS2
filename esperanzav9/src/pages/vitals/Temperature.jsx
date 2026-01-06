@@ -19,7 +19,7 @@ export default function Temperature() {
       // Mock reading: temperature between 36.0-37.5°C (normal body temperature range)
       const temperature = Math.round((36.0 + Math.random() * 1.5) * 10) / 10;
       setTemp(temperature);
-      sessionStorage.setItem(SESSION_KEYS.temperature, String(temperature));
+      sessionStorage.setItem(SESSION_KEYS.temp, String(temperature));
       saveTemperature(temperature);
     }, initModalDelay);
   };

@@ -34,8 +34,8 @@ def check_vital_abnormalities(vitals: Dict) -> Tuple[str, list]:
             abnormalities.append(f"Temperature elevated/low: {temp}°C")
     
     # Heart Rate/Pulse (Normal: 60-100 bpm)
-    if vitals.get('heart_rate'):
-        hr = int(vitals['heart_rate'])
+    if vitals.get('pulse_rate'):
+        hr = int(vitals['pulse_rate'])
         if hr >= 120 or hr <= 50:  # Critical
             abnormalities.append(f"Heart Rate CRITICAL: {hr} bpm")
             critical_count += 1
@@ -128,7 +128,7 @@ def compute_patient_priority(patient) -> str:
     # Prepare vitals dictionary
     vitals_data = {
         'temperature': latest_vital.temperature,
-        'heart_rate': latest_vital.heart_rate,
+        'pulse_rate': latest_vital.pulse_rate,
         'oxygen_saturation': latest_vital.oxygen_saturation,
         'blood_pressure': latest_vital.blood_pressure,
         'bmi': latest_vital.bmi if hasattr(latest_vital, 'bmi') else None
@@ -165,7 +165,7 @@ def is_abnormal_vital(vital_type, value):
     if value is None:
         return False
     
-    if vital_type == 'heart_rate':
+    if vital_type == 'pulse_rate':
         return value < 50 or value > 110
     elif vital_type == 'temperature':
         return value < 35.5 or value > 38.5

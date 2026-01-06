@@ -39,7 +39,7 @@ export default function VitalSigns() {
 
   const [results] = useState(() => ({
     heartRate: Number(sessionStorage.getItem('step_hr')) || 0,
-    temperature: Number(sessionStorage.getItem('temperature')) || 0,
+    temperature: Number(sessionStorage.getItem('step_temp')) || 0,
     spo2: Number(sessionStorage.getItem('step_spo2')) || 0,
     height: Number(sessionStorage.getItem('step_height')) || 0,
     weight: Number(sessionStorage.getItem('step_weight')) || 0,
@@ -289,10 +289,10 @@ export default function VitalSigns() {
             <div className="rounded-3xl bg-white/90 backdrop-blur border border-[#6ec1af] shadow-[0_8px_24px_rgba(16,185,129,.15)] hover:shadow-[0_12px_28px_rgba(15,23,42,.22)] transition-shadow p-6 flex flex-col items-center text-center">
               <p className="text-center text-[#406E65]">Your Queuing Number</p>
               <div className="mt-2 flex flex-col items-center gap-2">
-                {priority === 'PRIORITY' && parseInt(queue) >= 300 && (
+                {(priority === 'CRITICAL' || priority === 'HIGH') && parseInt(queue) >= 300 && (
                   <div className="inline-flex items-center gap-2">
                     <span className="rounded-md bg-red-600 px-2 py-[2px] text-[10px] font-bold uppercase tracking-wide text-white">
-                      Priority
+                      {priority === 'CRITICAL' ? 'Critical' : 'Priority'}
                     </span>
                   </div>
                 )}
