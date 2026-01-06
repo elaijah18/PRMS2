@@ -41,117 +41,58 @@ export default function Records() {
   const initialsOf = (name = '') =>
     name.split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || 'PT'
 
-  const isSameYMD = (a, b) => {
-    return a.getFullYear() === b.getFullYear() &&
-           a.getMonth() === b.getMonth() &&
-           a.getDate() === b.getDate()
-  }
-
-  // BP normalizers
-  const normalizeBP = (obj) => {
-    if (!obj) return null
-    if (typeof obj === 'string') return obj
-    // flat names
-    if (obj.blood_pressure) return obj.blood_pressure
-    if (obj.bp) return obj.bp
-    // nested containers
-    if (obj.vitals) {
-      const fromNested = normalizeBP(obj.vitals)
-      if (fromNested) return fromNested
-    }
-    if (obj.latest_vitals) {
-      const fromLatest = normalizeBP(obj.latest_vitals)
-      if (fromLatest) return fromLatest
-    }
-    // split fields
-    const sys = obj.systolic ?? obj.sys
-    const dia = obj.diastolic ?? obj.dia
-    if (sys != null && dia != null) return `${sys}/${dia}`
-    return null
-  }
-
-  const getRowBP = (row) => {
-    // 1) try any shape on the row
-    const found = normalizeBP(row)
-    if (found) return found
-
-    // 2) fallback: if user just entered BP on this same day and backend
-    //    didn't include it in history yet, show the local value
-    const fallback = sessionStorage.getItem('step_bp') || sessionStorage.getItem('bp')
-    const ts = Number(sessionStorage.getItem('step_bp_ts') || 0)
-    if (fallback && ts) {
-      const when = new Date(ts)
-      // row date may be ISO date/time or just YYYY-MM-DD
-      const rowDate = row.date ? new Date(row.date) : null
-      if (rowDate && !Number.isNaN(rowDate.getTime()) && isSameYMD(when, rowDate)) {
-        return fallback
-      }
-      // if row doesn't have a date, still use fallback for the top-most (today) row
-      if (!row.date && isSameYMD(when, new Date())) return fallback
-    }
-    return null
-  }
-
   // ---------- data load ----------
   useEffect(() => {
     const loadAuthenticatedData = async () => {
       try {
-        // profile
+        // Get profile first
         const profileRes = await fetch('http://localhost:8000/patient/profile/', { credentials: 'include' })
         if (profileRes.status === 401) {
           nav('/login')
           return
         }
         const patientData = await profileRes.json()
+        const patientId = patientData.patient_id
+        
         setProfile({
           first_name: patientData.first_name,
           last_name: patientData.last_name,
           middle_name: patientData.middle_name,
           name: `${patientData.first_name}${patientData.middle_name ? ' ' + patientData.middle_name.charAt(0).toUpperCase() + '.' : ''} ${patientData.last_name}`,
-          patientId: patientData.patient_id,
+          patientId: patientId,
           contact: patientData.contact,
           dob: patientData.birthdate,
           age: calcAge(patientData.birthdate),
         })
+        
         if (patientData.username && username !== patientData.username) {
           nav(`/records/${patientData.username}`, { replace: true })
         }
 
-        // vitals
-        const vitalsRes = await fetch('http://localhost:8000/patient/vitals/', { credentials: 'include' })
+        // Fetch vitals using patient_id (same endpoint as PatientRecords)
+        const vitalsRes = await fetch(`http://localhost:8000/patient/vitals/${patientId}/`, { 
+          credentials: 'include' 
+        })
+        
         if (vitalsRes.ok) {
           const vitalsData = await vitalsRes.json()
 
-          // latest (normalize + fallback)
+          // Set latest vitals - directly from API response
           if (vitalsData.latest) {
-            const latestBP = normalizeBP(vitalsData.latest) ||
-                             sessionStorage.getItem('step_bp') ||
-                             sessionStorage.getItem('bp') ||
-                             null
             setLatest({
-              heartRate: vitalsData.latest.pulse_rate ?? vitalsData.latest.hr ?? null,
+              heartRate: vitalsData.latest.pulse_rate ?? null,
               temperature: vitalsData.latest.temperature ?? null,
-              spo2: vitalsData.latest.spo2 ?? vitalsData.latest.oxygen_saturation ?? null,
-              bloodPressure: latestBP,
-              height: vitalsData.latest.height ?? vitalsData.latest.height_cm ?? null,
-              weight: vitalsData.latest.weight ?? vitalsData.latest.weight_kg ?? null,
+              spo2: vitalsData.latest.oxygen_saturation ?? null,
+              bloodPressure: vitalsData.latest.blood_pressure ?? null,
+              height: vitalsData.latest.height ?? null,
+              weight: vitalsData.latest.weight ?? null,
               bmi: vitalsData.latest.bmi ?? null,
             })
           }
 
-          // history (normalize each)
+          // Set history - directly from API response
           if (Array.isArray(vitalsData.history)) {
-            const normalized = vitalsData.history.map(r => ({
-              ...r,
-              pulse_rate: r.pulse_rate ?? r.hr ?? null,
-              temperature: r.temperature ?? null,
-              spo2: r.spo2 ?? r.oxygen_saturation ?? null,
-              height: r.height ?? r.height_cm ?? null,
-              weight: r.weight ?? r.weight_kg ?? null,
-              bmi: r.bmi ?? null,
-              // BP handled on display
-            }))
-            setRows(normalized)
+            setRows(vitalsData.history)
           }
         }
 
@@ -186,7 +127,6 @@ export default function Records() {
     try {
       setIsPrinting(true)
       
-      // Get patient ID
       const patientId = profile?.patientId || sessionStorage.getItem('patient_id')
       
       if (!patientId) {
@@ -195,7 +135,6 @@ export default function Records() {
         return
       }
       
-      // Fetch formatted print data from backend
       const response = await fetch(`http://localhost:8000/print-vitals/${patientId}/`, {
         credentials: 'include'
       })
@@ -207,7 +146,6 @@ export default function Records() {
       const data = await response.json()
       setPrintData(data)
       
-      // Wait a bit for React to update the DOM with print data
       setTimeout(() => {
         window.print()
         setIsPrinting(false)
@@ -217,7 +155,6 @@ export default function Records() {
       console.error('Print error:', error)
       setPopupMsg('Failed to prepare print data. Using local data instead.')
       setIsPrinting(false)
-      // Fallback to original print method
       window.print()
     }
   }
@@ -232,7 +169,6 @@ export default function Records() {
         return
       }
       
-      // Fetch PDF from backend
       const response = await fetch(
         `http://localhost:8000/print-vitals/${patientId}/?format=pdf`,
         { credentials: 'include' }
@@ -242,7 +178,6 @@ export default function Records() {
         throw new Error('Failed to generate PDF')
       }
       
-      // Create blob and download
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -261,28 +196,18 @@ export default function Records() {
 
   // Enhanced print ticket with backend data
   const printEnhancedTicket = () => {
-    // profile-derived identity (fallback to session)
     const patientId = profile?.patientId ?? (sessionStorage.getItem('patient_id') || '—')
     const patientName = profile?.name ?? (sessionStorage.getItem('patient_name') || '—')
 
-    // latest vitals fallback from localStorage if API didn't provide
-    const latestLocal = (() => {
-      try {
-        return JSON.parse(localStorage.getItem('latestVitals') || 'null')
-      } catch { return null }
-    })()
-
-    // prepare "results" object for printing
     const results = {
-      weight: latest?.weight ?? latestLocal?.weight ?? '—',
-      height: latest?.height ?? latestLocal?.height ?? '—',
-      heartRate: latest?.heartRate ?? latestLocal?.heartRate ?? '—',
-      spo2: latest?.spo2 ?? latestLocal?.spo2 ?? '—',
-      temperature: latest?.temperature ?? latestLocal?.temperature ?? '—',
-      bp: latest?.bloodPressure ?? latestLocal?.bp ?? latestLocal?.blood_pressure ?? '—',
+      weight: latest?.weight ?? '—',
+      height: latest?.height ?? '—',
+      heartRate: latest?.heartRate ?? '—',
+      spo2: latest?.spo2 ?? '—',
+      temperature: latest?.temperature ?? '—',
+      bp: latest?.bloodPressure ?? '—',
     }
 
-    // compute BMI if missing
     const bmi = (() => {
       if (typeof (latest?.bmi) === 'number') return latest.bmi
       const h = Number(results.height) / 100
@@ -291,17 +216,15 @@ export default function Records() {
         const v = w / (h * h)
         if (Number.isFinite(v)) return Number(v.toFixed(1))
       }
-      return latestLocal?.bmi ?? '—'
+      return '—'
     })()
 
-    // triage / priority (saved by the vitals page)
     const pri = sessionStorage.getItem('last_vitals_priority') || 'NORMAL'
     const priCode = sessionStorage.getItem('last_vitals_priority_code') || null
     const priReasons = (() => {
       try { return JSON.parse(sessionStorage.getItem('last_vitals_priority_reasons') || '[]') } catch { return [] }
     })()
 
-    // queue number (fallback to last number used today)
     const queue = (() => {
       const raw = localStorage.getItem('queueNo')
       if (!raw) return '—'
@@ -309,12 +232,10 @@ export default function Records() {
       return Number.isFinite(n) ? String(n).padStart(3, '0') : '—'
     })()
 
-    // Use backend data if available, otherwise fall back to local data
     if (printData) {
       return printData
     }
 
-    // Local fallback data structure
     return {
       header: {
         facility_name: "Esperanza Health Center",
@@ -369,7 +290,6 @@ export default function Records() {
     return (
       <div id="print-root" ref={printRef} className="hidden print:block">
         <div style={{ width: '48mm', margin: '0 auto' }}>
-          {/* Header */}
           <div className="center mb6">
             <div className="big">{data.header.facility_name}</div>
             <div className="sm">{data.header.document_type}</div>
@@ -378,7 +298,6 @@ export default function Records() {
           
           <div className="hr"></div>
           
-          {/* Identity */}
           <div className="kv mt6">
             <div className="label">Patient ID</div>
             <div className="val">{data.patient_info.patient_id}</div>
@@ -396,7 +315,6 @@ export default function Records() {
 
           <div className="hr"></div>
 
-          {/* Measurements */}
           <div className="label">Measurements</div>
           <div className="meas mt4">
             <div className="label">Weight</div>
@@ -423,7 +341,6 @@ export default function Records() {
 
           <div className="hr"></div>
 
-          {/* Triage Information */}
           <div className="label">Triage Priority</div>
           <div className="meas mt4">
             <div className="label">Priority</div>
@@ -447,7 +364,6 @@ export default function Records() {
             </div>
           )}
 
-          {/* Queue Number if available */}
           {data.queue.number !== '—' && (
             <>
               <div className="hr"></div>
@@ -462,7 +378,6 @@ export default function Records() {
 
           <div className="hr"></div>
 
-          {/* Footer */}
           <div className="xs center mt6">
             {data.footer.disclaimer}
           </div>
@@ -478,50 +393,48 @@ export default function Records() {
   }
 
   const PrintButtonSection = () => {
-  const handlePrintToPOS58 = async () => {
-    try {
-      const patientId = profile?.patientId || sessionStorage.getItem('patient_id');
-      if (!patientId) {
-        setPopupMsg('Patient ID not found.')
-        return
+    const handlePrintToPOS58 = async () => {
+      try {
+        const patientId = profile?.patientId || sessionStorage.getItem('patient_id');
+        if (!patientId) {
+          setPopupMsg('Patient ID not found.')
+          return
+        }
+
+        const res = await fetch("http://localhost:8000/print-pos58/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patient_id: patientId }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          setPopupMsg('🖨️ Printed successfully to POS58 printer!')
+        } else {
+          setPopupMsg('⚠️ Print failed: ' + data.error)
+        }
+      } catch (err) {
+        console.error('POS58 print error:', err)
+        setPopupMsg('Failed to send print command to printer.')
       }
+    };
 
-      const res = await fetch("http://localhost:8000/print-pos58/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patient_id: patientId }),
-      });
+    return (
+      <div className="mt-8 flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-2xl font-extrabold text-[#406E65]">Your Latest Vitals</h3>
 
-      const data = await res.json();
-      if (res.ok) {
-        setPopupMsg('🖨️ Printed successfully to POS58 printer!')
-      } else {
-        setPopupMsg('⚠️ Print failed: ' + data.error)
-      }
-    } catch (err) {
-      console.error('POS58 print error:', err)
-      setPopupMsg('Failed to send print command to printer.')
-    }
-  };
-
-  return (
-    <div className="mt-8 flex items-center justify-between flex-wrap gap-2">
-      <h3 className="text-2xl font-extrabold text-[#406E65]">Your Latest Vitals</h3>
-
-      <div className="print:hidden flex gap-2">
-
-        {/* Print */}
-        <button
-          onClick={handlePrintToPOS58}
-          className="inline-flex items-center gap-2 rounded-xl border border-green-400 bg-white px-4 py-2 text-green-700 hover:bg-green-50"
-        >
-          <img src={printIcon} alt="" className="h-4 w-4 object-contain" />
-          <span className="font-medium">Print</span>
-        </button>
+        <div className="print:hidden flex gap-2">
+          <button
+            onClick={handlePrintToPOS58}
+            className="inline-flex items-center gap-2 rounded-xl border border-green-400 bg-white px-4 py-2 text-green-700 hover:bg-green-50"
+          >
+            <img src={printIcon} alt="" className="h-4 w-4 object-contain" />
+            <span className="font-medium">Print</span>
+          </button>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   // ---------- Loading State ----------
   if (loading || !profile) {
@@ -539,7 +452,6 @@ export default function Records() {
 
   return (
     <section className="relative mx-auto max-w-5xl px-4 py-16">
-      {/* CSS STYLE FOR PRINTING */}
       <style>
         {`
           @page { size: 48mm auto; margin: 3mm; }
@@ -550,7 +462,6 @@ export default function Records() {
             #print-root { position: absolute; inset: 0; width: 100%; }
           }
 
-          /* Receipt look */
           #print-root {
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
             -webkit-print-color-adjust: exact;
@@ -564,21 +475,18 @@ export default function Records() {
           #print-root .val { font-size: 10px; font-weight: 700; }
           #print-root .big { font-size: 22px; font-weight: 900; letter-spacing: 1px; }
 
-          /* Two-column KV grid */
           #print-root .kv {
             display: grid;
             grid-template-columns: 26mm 1fr;
             row-gap: 2px;
           }
 
-          /* Measurements grid: label on left, value on right */
           #print-root .meas {
             display: grid;
             grid-template-columns: 1fr auto;
             row-gap: 2px;
           }
 
-          /* Utilities */
           #print-root .center { text-align: center; }
           #print-root .mt4 { margin-top: 4px; }
           #print-root .mt6 { margin-top: 6px; }
@@ -595,7 +503,6 @@ export default function Records() {
         <span className="font-medium">Logout</span>
       </button>
 
-      {/* Patient info */}
       <div className="rounded-2xl border bg-white p-6">
         <div className="flex flex-wrap items-center gap-4">
           <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-100 text-emerald-700 font-bold">
@@ -612,10 +519,8 @@ export default function Records() {
         </div>
       </div>
 
-      {/* Latest vitals header with enhanced buttons */}
       <PrintButtonSection />
 
-      {/* Latest vitals cards */}
       <div className="mt-4 grid gap-4 md:grid-cols-3 print:gap-2">
         <Card label="Pulse Rate" icon={heartRateIcon} alt="Pulse rate" value={latest?.heartRate} unit="BPM" />
         <Card label="Temperature" icon={temperatureIcon} alt="Temperature" value={latest?.temperature} unit="°C" />
@@ -626,7 +531,6 @@ export default function Records() {
         <Card label="BMI" icon={bmiIcon} alt="BMI" value={latest?.bmi} unit="kg/m²" />
       </div>
 
-      {/* Past vitals table */}
       <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-200 bg-white print:hidden">
         <table className="min-w-full text-left text-sm">
           <thead className="bg-slate-50 text-[#406E65] font-medium">
@@ -649,29 +553,25 @@ export default function Records() {
                 </td>
               </tr>
             ) : (
-              rows.map((r, i) => {
-                const bpDisplay = getRowBP(r)
-                return (
-                  <tr key={r.id || i} className="border-t border-slate-100 text-[#406E65]">
-                    <td className="px-4 py-3">{r.date ?? '—'}</td>
-                    <td className="px-4 py-3">{r.pulse_rate != null ? `${r.pulse_rate} bpm` : '—'}</td>
-                    <td className="px-4 py-3">{bpDisplay ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      {typeof r.temperature === 'number' ? `${r.temperature} °C` : (r.temperature ?? '—')}
-                    </td>
-                    <td className="px-4 py-3">{typeof r.spo2 === 'number' ? `${r.spo2}%` : (r.spo2 ?? '—')}</td>
-                    <td className="px-4 py-3">{typeof r.height === 'number' ? `${r.height} cm` : (r.height ?? '—')}</td>
-                    <td className="px-4 py-3">{typeof r.weight === 'number' ? `${r.weight} kg` : (r.weight ?? '—')}</td>
-                    <td className="px-4 py-3">{typeof r.bmi === 'number' ? `${r.bmi} kg/m²` : (r.bmi ?? '—')}</td>
-                  </tr>
-                )
-              })
+              rows.map((r, i) => (
+                <tr key={r.id || i} className="border-t border-slate-100 text-[#406E65]">
+                  <td className="px-4 py-3">{r.date ?? '—'}</td>
+                  <td className="px-4 py-3">{r.pulse_rate != null ? `${r.pulse_rate} bpm` : '—'}</td>
+                  <td className="px-4 py-3">{r.blood_pressure ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {typeof r.temperature === 'number' ? `${r.temperature} °C` : (r.temperature ?? '—')}
+                  </td>
+                  <td className="px-4 py-3">{typeof r.oxygen_saturation === 'number' ? `${r.oxygen_saturation}%` : (r.oxygen_saturation ?? '—')}</td>
+                  <td className="px-4 py-3">{typeof r.height === 'number' ? `${r.height} cm` : (r.height ?? '—')}</td>
+                  <td className="px-4 py-3">{typeof r.weight === 'number' ? `${r.weight} kg` : (r.weight ?? '—')}</td>
+                  <td className="px-4 py-3">{typeof r.bmi === 'number' ? `${r.bmi} kg/m²` : (r.bmi ?? '—')}</td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Enhanced Print Ticket */}
       <EnhancedPrintTicket />
 
       {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
