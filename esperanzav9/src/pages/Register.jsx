@@ -210,8 +210,20 @@ export default function Register() {
     const cleanedPin = pin.replace(/\D/g, '').slice(0, 4)
 
     const newErrors = {}
-    if (!trimmedFirst || !trimmedLast) {
-      newErrors.name = 'First and last name are required.'
+    if (!trimmedFirst) {
+      newErrors.first_name = 'First name is required.'
+    } else if (trimmedFirst.length > 50) {
+      newErrors.first_name = 'First name must be 1-50 characters.'
+    }
+
+    if (trimmedMiddle.length > 50) {
+      newErrors.middle_name = 'Middle name must be 0-50 characters.'
+    }
+
+    if (!trimmedLast) {
+      newErrors.last_name = 'Last name is required.'
+    } else if (trimmedLast.length > 50) {
+      newErrors.last_name = 'Last name must be 1-50 characters.'
     }
     if (!cleanedPhone) {
       newErrors.phone = 'Phone number is required.'
@@ -344,6 +356,9 @@ export default function Register() {
                     maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {errors.first_name && (
+                    <p className="mt-1 text-xs text-red-600">{errors.first_name}</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-slate-700">Middle Name</label>
@@ -355,6 +370,9 @@ export default function Register() {
                     maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {errors.middle_name && (
+                    <p className="mt-1 text-xs text-red-600">{errors.middle_name}</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-slate-700">Last Name</label>
@@ -367,11 +385,11 @@ export default function Register() {
                     maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {errors.last_name && (
+                    <p className="mt-1 text-xs text-red-600">{errors.last_name}</p>
+                  )}
                 </div>
               </div>
-              {errors.name && (
-                <p className="-mt-4 mb-2 text-xs text-red-600">{errors.name}</p>
-              )}
 
               {/* Sex / Birthdate */}
               <div className="grid md:grid-cols-3 gap-6 mb-6">
