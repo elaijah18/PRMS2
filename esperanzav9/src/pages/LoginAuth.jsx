@@ -228,7 +228,11 @@ export default function LoginAuth() {
       return
     }
 
-    if (k === 'Enter' && pin.length === 4) {
+    if (k === 'Enter') {
+      if (pin.length < 4) {
+        setPopupMsg('Please enter your 4-digit PIN.')
+        return
+      }
       authenticateUser(pin, role)
     }
   }
@@ -296,6 +300,14 @@ export default function LoginAuth() {
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (!pin || pin.length < 4) {
+                      setPopupMsg('Please enter your 4-digit PIN.')
+                      e.preventDefault()
+                    }
+                  }
+                }}
                 placeholder="Enter your username"
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
               />
