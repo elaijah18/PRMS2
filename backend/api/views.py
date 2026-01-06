@@ -672,12 +672,12 @@ def receive_vital_signs(request):
         return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
 
     # Try to find an existing record by ID (sent by frontend)
-    vital_id = data.get('id')
+    vitals_id = data.get('id')
     vital_signs = None
 
-    if vital_id:
+    if vitals_id:
         try:
-            vital_signs = VitalSigns.objects.get(id=vital_id, patient=patient)
+            vital_signs = VitalSigns.objects.get(id=vitals_id, patient=patient)
         except VitalSigns.DoesNotExist:
             vital_signs = None
 
@@ -757,7 +757,7 @@ def receive_vital_signs(request):
     return Response({
         "message": "Vital signs saved successfully",
         "data": {
-            "id": vital_signs.id,
+            "id": vital_signs.vitals_id,
             "patient_id": patient.patient_id,
             "pulse_rate": vital_signs.pulse_rate,
             "temperature": vital_signs.temperature,
