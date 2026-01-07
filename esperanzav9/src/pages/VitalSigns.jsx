@@ -106,7 +106,7 @@ export default function VitalSigns() {
 
         const vitalsPayload = {
           patient_id,
-          heart_rate: Number(results.heartRate) || null,
+          pulse_rate: Number(results.heartRate) || null,
           temperature: Number(results.temperature) || null,
           oxygen_saturation: Number(results.spo2) || null,
           blood_pressure: results.bp && results.bp !== '—' ? results.bp : null,

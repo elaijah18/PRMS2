@@ -87,7 +87,7 @@ class Patient(models.Model):
 class VitalSigns(models.Model):
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='vital_signs')
     date_time_recorded = models.DateTimeField(auto_now_add=True)
-    heart_rate = models.IntegerField(null=True, blank=True)  # bpm
+    pulse_rate = models.IntegerField(null=True, blank=True)  # bpm
     temperature = models.FloatField(null=True, blank=True)  # °C
     oxygen_saturation = models.FloatField(null=True, blank=True)  # %
     blood_pressure = models.CharField(null=True, blank=True, max_length=7)  # mmHg
@@ -227,7 +227,7 @@ class ArchivedPatient(models.Model):
 class ArchivedVitalSigns(models.Model):
     patient = models.ForeignKey(ArchivedPatient, on_delete=models.CASCADE, related_name='vital_signs')
     date_time_recorded = models.DateTimeField()
-    heart_rate = models.IntegerField(null=True, blank=True)
+    pulse_rate = models.IntegerField(null=True, blank=True)
     temperature = models.FloatField(null=True, blank=True)
     oxygen_saturation = models.FloatField(null=True, blank=True)
     blood_pressure = models.CharField(null=True, blank=True, max_length=7)
@@ -292,7 +292,7 @@ def archive_patient(patient_id, staff=None, reason=None):
             ArchivedVitalSigns.objects.create(
                 patient=archived_patient,
                 date_time_recorded=vital.date_time_recorded,
-                heart_rate=vital.heart_rate,
+                pulse_rate=vital.pulse_rate,
                 temperature=vital.temperature,
                 oxygen_saturation=vital.oxygen_saturation,
                 blood_pressure=vital.blood_pressure,
@@ -358,7 +358,7 @@ def restore_patient(patient_id):
             VitalSigns.objects.create(
                 patient=patient,
                 date_time_recorded=vital.date_time_recorded,
-                heart_rate=vital.heart_rate,
+                pulse_rate=vital.pulse_rate,
                 temperature=vital.temperature,
                 oxygen_saturation=vital.oxygen_saturation,
                 blood_pressure=vital.blood_pressure,

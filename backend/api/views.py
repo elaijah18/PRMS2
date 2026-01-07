@@ -2,7 +2,7 @@ import base64
 from django.shortcuts import render  # Unused but kept if needed elsewhere
 from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny
-from rest_framework.decorators import action, api_view
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from .models import Patient, VitalSigns, HCStaff, QueueEntry, ArchivedPatient, ArchivedVitalSigns, ArchivedQueueEntry
 from .models import archive_patient, restore_patient
@@ -25,12 +25,15 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 
-SERIAL_PORT = 'COM8'  # Adjust if using ACM0
-BAUD_RATE = 115200
+SERIAL_PORT = 'COM5'  # Adjust if using ACM0    
+BAUD_RATE = 9600
 IS_SCANNING = False
 
 _serial_connection = None
 _serial_lock = threading.Lock()
+
+_display_connection = None
+_display_lock = threading.Lock()
 
 def get_serial():
     """Get persistent serial connection - never close it"""
@@ -357,6 +360,7 @@ latest_vitals = {
     "heart_rate": None,
     "spo2": None,
     "height": None,
+    "weight": None
 }
 
 
@@ -407,7 +411,8 @@ def start_vitals(request):
             "temperature": data.get("temperature"),
             "heart_rate": data.get("heart_rate"),
             "spo2": data.get("spo2"),
-            "height": data.get("height")
+            "height": data.get("height"),
+            "weight": data.get("weight")
         })
 
         print("Vitals received:", latest_vitals)
@@ -445,7 +450,7 @@ def fetch_temperature(request):
 
 
 @api_view(['GET'])
-def fetch_heart_rate(request):
+def fetch_pulse_rate(request):
     """Fetch latest heart rate from Arduino"""
     ser = get_serial()
     if ser is None:
@@ -458,11 +463,11 @@ def fetch_heart_rate(request):
                 if line:
                     try:
                         data = json.loads(line)
-                        heart_rate = data.get("heart_rate")
-                        if heart_rate is not None:
-                            latest_vitals["heart_rate"] = int(heart_rate)
-                            print(f"Heart Rate: {heart_rate} bpm")
-                            return Response({"heart_rate": heart_rate})
+                        pulse_rate = data.get("pulse_rate")
+                        if pulse_rate is not None:
+                            latest_vitals["pulse_rate"] = int(pulse_rate)
+                            print(f"Heart Rate: {pulse_rate} bpm")
+                            return Response({"pulse_rate": pulse_rate})
                     except json.JSONDecodeError:
                         pass
             
@@ -517,6 +522,32 @@ def fetch_height(request):
                             latest_vitals["height"] = int(height)
                             print(f"Height: {height} cm")
                             return Response({"height": height})
+                    except json.JSONDecodeError:
+                        pass
+            
+            return Response({"error": "No data available"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+@api_view(['GET'])
+def fetch_weight(request):
+    """Fetch latest weight from Arduino"""
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Connection error"}, status=500)
+    
+    try:
+        with _serial_lock:
+            if ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                if line:
+                    try:
+                        data = json.loads(line)
+                        weight = data.get("weight")
+                        if weight is not None:
+                            latest_vitals["weight"] = float(weight)
+                            print(f"⚖️ Weight: {weight} kg")
+                            return Response({"weight": weight})
                     except json.JSONDecodeError:
                         pass
             
@@ -611,7 +642,7 @@ def update_vitals(request, id):
 @api_view(['POST'])
 def receive_vital_signs(request):
     """
-    Handles vital sign data (weight, height, heart_rate, etc.)
+    Handles vital sign data (weight, height, pulse_rate, etc.)
     Updates existing record for today if incomplete, or creates new one.
     """
     data = request.data
@@ -655,8 +686,8 @@ def receive_vital_signs(request):
             all_filled = all([
                 vital_signs.weight,
                 vital_signs.height,
-                vital_signs.heart_rate,
-                vital_signs.temperature,
+                vital_signs.pulse_rate,
+                vital_signs.temperature5,
                 vital_signs.oxygen_saturation,
                 vital_signs.blood_pressure,
                 
@@ -672,7 +703,7 @@ def receive_vital_signs(request):
         )
 
     # --- Update only the provided fields ---
-    for field in ['heart_rate', 'temperature', 'oxygen_saturation', 'weight', 'height', 'blood_pressure']:
+    for field in ['pulse_rate', 'temperature', 'oxygen_saturation', 'weight', 'height', 'blood_pressure']:
         if field in data and data[field] is not None:
             setattr(vital_signs, field, data[field])
 
@@ -681,7 +712,7 @@ def receive_vital_signs(request):
     
     all_vitals_complete = all([
         vital_signs.blood_pressure,
-        vital_signs.heart_rate,
+        vital_signs.pulse_rate,
         vital_signs.temperature,
         vital_signs.oxygen_saturation,
         vital_signs.weight,
@@ -713,7 +744,7 @@ def receive_vital_signs(request):
         "data": {
             "id": vital_signs.id,
             "patient_id": patient.patient_id,
-            "heart_rate": vital_signs.heart_rate,
+            "pulse_rate": vital_signs.pulse_rate,
             "temperature": vital_signs.temperature,
             "oxygen_saturation": vital_signs.oxygen_saturation,
             "weight": vital_signs.weight,
@@ -770,9 +801,11 @@ def login(request):
             request.session["name"] = staff_member.name
 
             return Response({
+                
+                
                 "role": "staff",
                 "name": staff_member.name,
-                "staff_id": staff_member.staff_id
+                "staff_id": staff_member.id
             })
 
         except Exception as e:
@@ -848,7 +881,7 @@ def get_patient_vitals(request):
                 bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
             
             latest_data = {
-                'heart_rate': latest_vital.heart_rate,
+                'pulse_rate': latest_vital.pulse_rate,
                 'temperature': latest_vital.temperature,
                 'spo2': latest_vital.oxygen_saturation,
                 'blood_pressure': None,  # Add blood pressure fields to your model if needed
@@ -863,7 +896,7 @@ def get_patient_vitals(request):
             history_data.append({
                 'id': vital.id,
                 'date': vital.date_time_recorded.strftime('%Y-%m-%d %H:%M'),
-                'heart_rate': vital.heart_rate,
+                'pulse_rate': vital.pulse_rate,
                 'blood_pressure': None,  # Add blood pressure fields to your model if needed
                 'temperature': vital.temperature,
                 'spo2': vital.oxygen_saturation,
@@ -909,7 +942,7 @@ def get_patient_vitals_by_id(request, patient_id): # <-- NEW FUNCTION
             
             # Map latest vitals data
             latest_data = {
-                'heart_rate': latest_vital.heart_rate,
+                'pulse_rate': latest_vital.pulse_rate,
                 'temperature': latest_vital.temperature,
                 'oxygen_saturation': latest_vital.oxygen_saturation,
                 'blood_pressure': latest_vital.blood_pressure, # ADDED: Ensure BP is included
@@ -929,7 +962,7 @@ def get_patient_vitals_by_id(request, patient_id): # <-- NEW FUNCTION
             history_data.append({
                 'id': vital.id,
                 'date': vital.date_time_recorded.strftime('%Y-%m-%d %H:%M'), 
-                'heart_rate': vital.heart_rate,
+                'pulse_rate': vital.pulse_rate,
                 'blood_pressure': vital.blood_pressure,
                 'temperature': vital.temperature,
                 'oxygen_saturation': vital.oxygen_saturation,
@@ -1109,7 +1142,7 @@ def get_all_patients(request):
                 bmi_value = round(vital.weight / (height_m * height_m), 1)
 
             latest_vital_data = {
-                'heart_rate': vital.heart_rate,
+                'pulse_rate': vital.pulse_rate,
                 'temperature': vital.temperature,
                 'oxygen_saturation': vital.oxygen_saturation,
                 'blood_pressure': vital.blood_pressure,
@@ -1301,7 +1334,7 @@ def print_patient_vitals(request, patient_id=None):
                 "weight": f"{latest_vital.weight} kg" if latest_vital.weight else "—",
                 "height": f"{latest_vital.height} cm" if latest_vital.height else "—",
                 "bmi": f"{bmi_value} kg/m²" if bmi_value else "—",
-                "heart_rate": f"{latest_vital.heart_rate} bpm" if latest_vital.heart_rate else "—",
+                "pulse_rate": f"{latest_vital.pulse_rate} bpm" if latest_vital.pulse_rate else "—",
                 "temperature": f"{latest_vital.temperature} °C" if latest_vital.temperature else "—",
                 "oxygen_saturation": f"{latest_vital.oxygen_saturation} %" if latest_vital.oxygen_saturation else "—",
                 "blood_pressure": f"{latest_vital.blood_pressure} mmHg" if latest_vital.blood_pressure else "—"
@@ -1371,10 +1404,10 @@ def get_priority_reasons(vital_signs):
         elif vital_signs.temperature <= 35:
             reasons.append("Hypothermia")
     
-    if vital_signs.heart_rate:
-        if vital_signs.heart_rate > 100:
+    if vital_signs.pulse_rate:
+        if vital_signs.pulse_rate > 100:
             reasons.append("Elevated heart rate")
-        elif vital_signs.heart_rate < 60:
+        elif vital_signs.pulse_rate < 60:
             reasons.append("Low heart rate")
     
     if vital_signs.oxygen_saturation:
@@ -1462,7 +1495,7 @@ def generate_vitals_pdf(print_data):
     y = draw_lr("Weight", measurements["weight"], y)
     y = draw_lr("Height", measurements["height"], y)
     y = draw_lr("BMI", measurements["bmi"], y)
-    y = draw_lr("Pulse Rate", measurements["heart_rate"], y)
+    y = draw_lr("Pulse Rate", measurements["pulse_rate"], y)
     y = draw_lr("SpO2", measurements["oxygen_saturation"], y)
     y = draw_lr("Temperature", measurements["temperature"], y)
     y = draw_lr("Blood Pressure", measurements["blood_pressure"], y)
@@ -1637,7 +1670,7 @@ Age: {age_str}
 ID: {patient.patient_id}
 
 TEMP: {latest_vital.temperature or '—'} °C
-PULSE: {latest_vital.heart_rate or '—'} bpm
+PULSE: {latest_vital.pulse_rate or '—'} bpm
 SPO2: {latest_vital.oxygen_saturation or '—'} %
 HEIGHT: {latest_vital.height or '—'} cm
 WEIGHT: {latest_vital.weight or '—'} kg
@@ -1722,7 +1755,7 @@ Measurements
 Weight          {vitals.weight or "—"} kg
 Height          {vitals.height or "—"} cm
 BMI             {bmi_str} kg/m²
-Heart Rate      {vitals.heart_rate or "—"} bpm
+Heart Rate      {vitals.pulse_rate or "—"} bpm
 SpO2            {vitals.oxygen_saturation or "—"} %
 Temp            {vitals.temperature or "—"} °C
 BP              {vitals.blood_pressure or "—"} mmHg
@@ -1740,4 +1773,140 @@ please proceed to the clinic area.
         return Response({"message": "Printed combined receipt!"}, status=200)
 
     except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+# Add this to your views.py
+
+@api_view(['POST'])
+def update_queue_display(request):
+    """
+    Send the current queue number to the seven-segment display
+    Call this whenever the queue updates
+    """
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Display connection error"}, status=500)
+    
+    try:
+        # Get the current serving queue number
+        queue_entry = QueueEntry.objects.filter(
+            status='SERVING'
+        ).first()
+        
+        if not queue_entry:
+            # If no one is being served, get the next waiting patient
+            queue_entry = QueueEntry.objects.filter(
+                status='WAITING'
+            ).order_by('priority_order', 'entered_at').first()
+        
+        queue_number = queue_entry.queue_number if queue_entry else 0
+        
+        # Send to Arduino
+        with _serial_lock:
+            command = f"{queue_number}\n"
+            ser.write(command.encode())
+            ser.flush()
+        
+        return Response({
+            "message": "Display updated",
+            "queue_number": queue_number
+        }, status=200)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def get_current_queue_for_display(request):
+    """
+    Get current queue number being served (for frontend to call)
+    """
+    try:
+        # Get currently serving patient
+        queue_entry = QueueEntry.objects.filter(
+            status='SERVING'
+        ).first()
+        
+        if not queue_entry:
+            # Get next waiting patient
+            queue_entry = QueueEntry.objects.filter(
+                status='WAITING'
+            ).annotate(
+                priority_order=Case(
+                    When(priority_status='CRITICAL', then=1),
+                    When(priority_status='HIGH', then=2),
+                    When(priority_status='MEDIUM', then=3),
+                    default=4,
+                    output_field=IntegerField()
+                )
+            ).order_by('priority_order', 'entered_at').first()
+        
+        queue_number = queue_entry.queue_number if queue_entry else 0
+        
+        return Response({
+            "queue_number": queue_number,
+            "patient_name": f"{queue_entry.patient.first_name} {queue_entry.patient.last_name}" if queue_entry else None,
+            "status": queue_entry.status if queue_entry else "EMPTY"
+        }, status=200)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+def get_display_serial():
+    global _display_connection
+    
+    with _display_lock:
+        if _display_connection is None or not _display_connection.is_open:
+            try:
+                _display_connection = serial.Serial(SERIAL_PORT, 9600, timeout=0.5)
+                time.sleep(2)
+                print(f"Display connected to {SERIAL_PORT}")
+            except Exception as e:
+                print(f"Display connection error: {e}")
+                return None
+        return _display_connection
+
+
+@csrf_exempt
+@permission_classes([AllowAny])
+@api_view(['POST'])
+def update_queue_display(request):
+    """Send current queue number to display"""
+    ser = get_display_serial()  # Use separate connection
+    if ser is None:
+        return Response({"error": "Display connection error"}, status=500)
+    
+    try:
+        # Get currently SERVING patient
+        queue_entry = QueueEntry.objects.filter(status='SERVING').first()
+        
+        if not queue_entry:
+            # Get next WAITING patient
+            queue_entry = QueueEntry.objects.filter(
+                status='WAITING'
+            ).annotate(
+                priority_order=Case(
+                    When(priority_status='CRITICAL', then=1),
+                    When(priority_status='HIGH', then=2),
+                    When(priority_status='MEDIUM', then=3),
+                    default=4,
+                    output_field=IntegerField()
+                )
+            ).order_by('priority_order', 'entered_at').first()
+        
+        queue_number = queue_entry.queue_number if queue_entry else 0
+        
+        with _display_lock:
+            ser.write(f"{queue_number}\n".encode())
+            ser.flush()
+            print(f"✅ Sent to display: {queue_number}")
+        
+        return Response({
+            "message": "Display updated",
+            "queue_number": queue_number
+        }, status=200)
+        
+    except Exception as e:
+        print(f"Display error: {e}")
         return Response({"error": str(e)}, status=500)

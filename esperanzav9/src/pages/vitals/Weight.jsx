@@ -1,27 +1,54 @@
-// Weight.jsx — revised
+// Weight.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
 import ResultCard from '../../components/ResultCard';
-import { initModalDelay, SESSION_KEYS } from './utils';
+import { SESSION_KEYS, initModalDelay } from './utils';
 import WeightImg from '../../assets/weight2.png';
 
 export default function Weight() {
   const nav = useNavigate();
-  const [value, setValue] = useState(null);
+  const [weight, setWeight] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [showInit, setShowInit] = useState(false);
-  const API_BASE = 'http://localhost:8000';
+  const [error, setError] = useState('');
 
-  const start = () => {
+  const API_BASE = 'http://localhost:8000/api';
+
+  const handleStart = async () => {
+    setLoading(true);
     setShowInit(true);
-    setTimeout(() => {
-      setShowInit(false);
-      // Mock reading (replace with real sensor data)
-      const w = Math.round((48 + Math.random() * 22) * 10) / 10;
-      setValue(w);
-      sessionStorage.setItem(SESSION_KEYS.weight, String(w));
-      saveWeight(w);
-    }, initModalDelay);
+    setError('');
+    setWeight(null);
+
+    try {
+      // Trigger Arduino to measure all vitals including weight
+      const res = await fetch(`${API_BASE}/start_vitals/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await res.json();
+      console.log("🔥 Response from Django:", data);
+
+      if (res.ok && data.weight !== undefined) {
+        const measuredWeight = Number(data.weight);
+        setWeight(measuredWeight);
+        sessionStorage.setItem(SESSION_KEYS.weight, String(measuredWeight));
+        console.log('⚖️ Measured weight:', measuredWeight);
+        
+        // Save weight to backend
+        await saveWeight(measuredWeight);
+      } else {
+        setError(data.error || 'No weight data received from Arduino.');
+      }
+    } catch (err) {
+      console.error('Error fetching weight:', err);
+      setError('Failed to connect to Arduino.');
+    } finally {
+      setLoading(false);
+      setTimeout(() => setShowInit(false), initModalDelay);
+    }
   };
 
   const saveWeight = async (weightValue) => {
@@ -61,6 +88,8 @@ export default function Weight() {
     }
   };
 
+  const ready = weight !== null;
+
   return (
     <section className="mx-auto max-w-4xl px-4 py-16">
       <h2 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 bg-clip-text text-transparent text-center">
@@ -70,7 +99,7 @@ export default function Weight() {
         Step carefully onto the platform. Stand still and wait for your weight to display.
       </p>
 
-      {!value && (
+      {!ready && (
         <div className="mt-6 flex justify-center">
           <img
             src={WeightImg}
@@ -80,18 +109,21 @@ export default function Weight() {
         </div>
       )}
 
-      {!value ? (
+      {!ready ? (
         <div className="mt-8 text-center">
           <button
-            onClick={start}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+            onClick={handleStart}
+            disabled={loading}
+            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60"
           >
-            Start
+            {loading ? 'Measuring…' : 'Start'}
           </button>
+          {error && <p className="mt-3 text-red-600 font-medium">{error}</p>}
+          {loading && <p className="mt-3 text-slate-600">Initializing sensor…</p>}
         </div>
       ) : (
         <div className="mt-8 space-y-6 text-center">
-          <ResultCard label="Weight" value={value} unit="kg" />
+          <ResultCard label="Weight" value={weight} unit="kg" />
           <button
             onClick={() => nav('/vitals/height')}
             className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
@@ -102,8 +134,8 @@ export default function Weight() {
       )}
 
       <SmallModal open={showInit}>
-        <p className="text-xl font-semibold text-[#406E65]">Initializing weight…</p>
-        <p className="mt-1 text-[#406E65]">Please stand still.</p>
+        <p className="text-xl font-semibold text-slate-800">Initializing weight…</p>
+        <p className="mt-1 text-slate-600">Please stand still.</p>
       </SmallModal>
     </section>
   );

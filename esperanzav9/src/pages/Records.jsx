@@ -131,7 +131,7 @@ export default function Records() {
                              sessionStorage.getItem('bp') ||
                              null
             setLatest({
-              heartRate: vitalsData.latest.heart_rate ?? vitalsData.latest.hr ?? null,
+              heartRate: vitalsData.latest.pulse_rate ?? vitalsData.latest.hr ?? null,
               temperature: vitalsData.latest.temperature ?? null,
               spo2: vitalsData.latest.spo2 ?? vitalsData.latest.oxygen_saturation ?? null,
               bloodPressure: latestBP,
@@ -145,7 +145,7 @@ export default function Records() {
           if (Array.isArray(vitalsData.history)) {
             const normalized = vitalsData.history.map(r => ({
               ...r,
-              heart_rate: r.heart_rate ?? r.hr ?? null,
+              pulse_rate: r.pulse_rate ?? r.hr ?? null,
               temperature: r.temperature ?? null,
               spo2: r.spo2 ?? r.oxygen_saturation ?? null,
               height: r.height ?? r.height_cm ?? null,
@@ -333,7 +333,7 @@ export default function Records() {
         weight: `${results.weight} kg`,
         height: `${results.height} cm`,
         bmi: `${bmi} kg/m²`,
-        heart_rate: `${results.heartRate} bpm`,
+        pulse_rate: `${results.heartRate} bpm`,
         temperature: `${results.temperature} °C`,
         oxygen_saturation: `${results.spo2} %`,
         blood_pressure: `${results.bp} mmHg`
@@ -412,7 +412,7 @@ export default function Records() {
             <div className="val">{data.measurements.bmi}</div>
             
             <div className="label">Pulse Rate</div>
-            <div className="val">{data.measurements.heart_rate}</div>
+            <div className="val">{data.measurements.pulse_rate}</div>
             
             <div className="label">SpO₂</div>
             <div className="val">{data.measurements.oxygen_saturation}</div>
@@ -657,7 +657,7 @@ export default function Records() {
                 return (
                   <tr key={r.id || i} className="border-t border-slate-100 text-[#406E65]">
                     <td className="px-4 py-3">{r.date ?? '—'}</td>
-                    <td className="px-4 py-3">{r.heart_rate != null ? `${r.heart_rate} bpm` : '—'}</td>
+                    <td className="px-4 py-3">{r.pulse_rate != null ? `${r.pulse_rate} bpm` : '—'}</td>
                     <td className="px-4 py-3">{bpDisplay ?? '—'}</td>
                     <td className="px-4 py-3">
                       {typeof r.temperature === 'number' ? `${r.temperature} °C` : (r.temperature ?? '—')}

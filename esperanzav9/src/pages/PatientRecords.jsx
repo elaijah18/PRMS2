@@ -386,7 +386,35 @@ export default function PatientRecords() {
       setPopupMsg(`Failed to archive patient: ${err.message}`)
     }
   }
+
+  const startEditing = (patient) => {
+    const patientToEdit = {
+      ...patient,
+      first_name: patient.first_name || '',
+      middle_name: patient.middle_name || '',
+      last_name: patient.last_name || '',
+      sex: patient.sex || 'Male',
+      birthdate: patient.birthdate || patient.dob || '',
+      street: patient.street || '',
+      barangay: patient.barangay || '',
+    }
+    
+    setCurrentPatient(patientToEdit)
+    setEditing(true)
+    
+    setLatestVitals(patient.latest_vitals || null)
+    
+    fetchVitals(patient.patient_id)
+    
+    const currentSearch = searchParams.get('q')
+    if (currentSearch) {
+      nav(`/staff/patient-records/${patient.patient_id}?q=${encodeURIComponent(currentSearch)}`, { replace: true })
+    } else {
+      nav(`/staff/patient-records/${patient.patient_id}`, { replace: true })
+    }
+  }
   
+  const [totalCount, setTotalCount] = useState(0)
 
   return (
     <section className="relative mx-auto max-w-5xl px-2 py-16">
@@ -435,7 +463,7 @@ export default function PatientRecords() {
                     <p className="text-sm" style={{ color: BRAND.text }}>
                       Patient ID: <span className="font-semibold">{p.patient_id || '—'}</span> • 
                       Contact: <span className="font-semibold">{p.contact || '—'}</span> • 
-                      Address:{' '} <span className="font-semibold"> {`${p.barangay ?? ''} ${p.street ?? ''}`.trim() || '—'}</span>
+                      Address: <span className="font-semibold">{p.address || '—'}</span>
                     </p>
                   </div>
                   <div className="flex gap-3">
