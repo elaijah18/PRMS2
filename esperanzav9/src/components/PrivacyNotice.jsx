@@ -1,11 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 export default function PrivacyNotice() {
+  const location = useLocation();
   const [open, setOpen] = useState(true);
   const [checked, setChecked] = useState(false);
   const [scrolledToBottom, setScrolledToBottom] = useState(false);
   const scrollRef = useRef(null);
+
+  // Only show on homepage 
+  const allowedPaths = ['/'];
+  const isAllowedPath = allowedPaths.includes(location.pathname);
 
   useEffect(() => {
     const scrollEl = scrollRef.current;
@@ -19,11 +24,11 @@ export default function PrivacyNotice() {
 
     scrollEl.addEventListener("scroll", handleScroll);
     return () => scrollEl.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [isAllowedPath]);
 
   const agree = () => setOpen(false);
 
-  if (!open) return null;
+  if (!open || !isAllowedPath) return null;
 
   return (
     <div

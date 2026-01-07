@@ -228,7 +228,11 @@ export default function LoginAuth() {
       return
     }
 
-    if (k === 'Enter' && pin.length === 4) {
+    if (k === 'Enter') {
+      if (pin.length < 4) {
+        setPopupMsg('Please enter your 4-digit PIN.')
+        return
+      }
       authenticateUser(pin, role)
     }
   }
@@ -296,6 +300,14 @@ export default function LoginAuth() {
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (!pin || pin.length < 4) {
+                      setPopupMsg('Please enter your 4-digit PIN.')
+                      e.preventDefault()
+                    }
+                  }
+                }}
                 placeholder="Enter your username"
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
               />
@@ -304,10 +316,22 @@ export default function LoginAuth() {
             <label className="block text-sm font-medium text-slate-700">4-Digit PIN</label>
 
             <div className="relative mt-2">
+              {/* Changed the readOnly to onChange*/}
               <input
                 type={showPin ? 'text' : 'password'}
                 value={pin}
-                readOnly
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 4)
+                  setPin(value)
+                  if (value.length === 4) {
+                    authenticateUser(value, role)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && pin.length === 4) {
+                    authenticateUser(pin, role)
+                  }
+                }}
                 className="w-full rounded-xl border px-4 py-3 pr-12 text-2xl tracking-widest text-center"
               />
               <button

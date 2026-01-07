@@ -16,6 +16,7 @@ export default function Register() {
   const nav = useNavigate()
   const [creating, setCreating] = useState(false)
   const [popupMsg, setPopupMsg] = useState('')
+  const [errors, setErrors] = useState({})
 
   // Name fields
   const [first_name, setFirstName] = useState('')
@@ -23,7 +24,7 @@ export default function Register() {
   const [last_name, setLastName] = useState('')
 
   // Demographics
-  const [sex, setSex] = useState('Male')
+  const [sex, setSex] = useState('')
   const [phone, setPhone] = useState('')
 
   // Address
@@ -36,9 +37,9 @@ export default function Register() {
   })
 
   // Birthdate
-  const [month, setMonth] = useState(months[0])
-  const [day, setDay] = useState(1)
-  const [year, setYear] = useState(new Date().getFullYear())
+  const [month, setMonth] = useState('')
+  const [day, setDay] = useState('')
+  const [year, setYear] = useState('')
 
   // Account
   const [username, setUsername] = useState('')
@@ -55,7 +56,10 @@ export default function Register() {
   const [retryCount, setRetryCount] = useState(0)
 
   const dob = useMemo(() => {
-    const m = String(months.indexOf(month) + 1).padStart(2, '0')
+    if (!month || !day || !year) return ''
+    const mIndex = months.indexOf(month)
+    if (mIndex < 0) return ''
+    const m = String(mIndex + 1).padStart(2, '0')
     const d = String(day).padStart(2, '0')
     return `${year}-${m}-${d}`
   }, [month, day, year])
@@ -193,27 +197,95 @@ export default function Register() {
     }, 2000)
   }
 
+  // Capitalize first letter of each word
+  const capitalizeWords = (str) => {
+    return str
+      .trim()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
+  }
+
   const submit = async (e) => {
     e.preventDefault()
 
-    if (!first_name.trim() || !last_name.trim()) {
-      setPopupMsg('Please enter first and last name.')
+    const trimmedFirst = first_name.trim()
+    const trimmedMiddle = middle_name.trim()
+    const trimmedLast = last_name.trim()
+    const cleanedPhone = phone.replace(/\D/g, '').slice(0, 11)
+    const trimmedStreet = address.street.trim()
+    const trimmedBarangay = address.barangay.trim()
+    const trimmedUsername = username.trim()
+    const cleanedPin = pin.replace(/\D/g, '').slice(0, 4)
+
+    const newErrors = {}
+
+    if (!trimmedFirst) {
+      newErrors.first_name = 'First name is required.'
+    } else if (trimmedFirst.length > 50) {
+      newErrors.first_name = 'First name must be 1-50 characters.'
+    }
+
+    if (trimmedMiddle.length > 50) {
+      newErrors.middle_name = 'Middle name must be 0-50 characters.'
+    }
+
+    if (!trimmedLast) {
+      newErrors.last_name = 'Last name is required.'
+    } else if (trimmedLast.length > 50) {
+      newErrors.last_name = 'Last name must be 1-50 characters.'
+    }
+
+    if (!cleanedPhone) {
+      newErrors.phone = 'Phone number is required.'
+    } else if (cleanedPhone.length !== 11) {
+      newErrors.phone = 'Phone number must be 11 digits.'
+    }
+
+    if (!trimmedStreet) {
+      newErrors.street = 'Street address is required.'
+    }
+
+    if (!trimmedBarangay) {
+      newErrors.barangay = 'Please select a barangay.'
+    }
+
+    if (!sex) {
+      newErrors.sex = 'Please select sex.'
+    }
+
+    if (!month || !day || !year) {
+      newErrors.birthdate = 'Please select birth month, day, and year.'
+    }
+
+    if (!trimmedUsername) {
+      newErrors.username = 'Username is required.'
+    }
+
+    if (!cleanedPin || cleanedPin.length !== 4) {
+      newErrors.pin = 'PIN must be 4 digits.'
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors)
       return
     }
+
+    setErrors({})
 
     setCreating(true)
 
     const patientProfile = {
-      first_name: first_name.trim(),
-      middle_name: middle_name.trim(),
-      last_name: last_name.trim(),
+      first_name: capitalizeWords(trimmedFirst),
+      middle_name: capitalizeWords(trimmedMiddle),
+      last_name: capitalizeWords(trimmedLast),
       sex,
       birthdate: dob,
-      contact: phone.trim(),
-      street: address.street.trim(),
-      barangay: address.barangay.trim(),
-      username: username.trim(),
-      pin
+      contact: cleanedPhone,
+      street: trimmedStreet,
+      barangay: trimmedBarangay,
+      username: trimmedUsername,
+      pin: cleanedPin
     }
 
     try {
@@ -294,31 +366,43 @@ export default function Register() {
                   <label className="text-sm font-semibold text-slate-700">First Name</label>
                   <input
                     value={first_name}
-                    onChange={e => setFirstName(e.target.value.replace(/[^A-Za-z ]/g, ''))}
+                    onChange={e => setFirstName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}
                     required
                     disabled={creating}
+                    maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {errors.first_name && (
+                    <p className="mt-1 text-xs text-red-600">{errors.first_name}</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-slate-700">Middle Name</label>
                   <input
                     value={middle_name}
-                    onChange={e => setMiddleName(e.target.value.replace(/[^A-Za-z ]/g, ''))}
+                    onChange={e => setMiddleName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}
                     placeholder="(optional)"
                     disabled={creating}
+                    maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {errors.middle_name && (
+                    <p className="mt-1 text-xs text-red-600">{errors.middle_name}</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-slate-700">Last Name</label>
                   <input
                     value={last_name}
-                    onChange={e => setLastName(e.target.value.replace(/[^A-Za-z ]/g, ''))}                
+                    onChange={e => setLastName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}                
                     required
                     disabled={creating}
+                    maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {errors.last_name && (
+                    <p className="mt-1 text-xs text-red-600">{errors.last_name}</p>
+                  )}
                 </div>
               </div>
 
@@ -332,9 +416,13 @@ export default function Register() {
                     disabled={creating}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   >
-                    <option>Male</option>
-                    <option>Female</option>
+                    <option value="" disabled>Select</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
                   </select>
+                  {errors.sex && (
+                    <p className="mt-1 text-xs text-red-600">{errors.sex}</p>
+                  )}
                 </div>
                 <div className="md:col-span-2">
                   <label className="text-sm font-semibold text-slate-700">Birthdate</label>
@@ -345,27 +433,33 @@ export default function Register() {
                       disabled={creating}
                       className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                     >
-                      {months.map(m => <option key={m}>{m}</option>)}
+                      <option value="" disabled>Month</option>
+                      {months.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                     <select
                       value={day}
-                      onChange={e=>setDay(Number(e.target.value))}
+                      onChange={e=>setDay(e.target.value)}
                       disabled={creating}
                       className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                     >
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d}>{d}</option>)}
+                      <option value="" disabled>Day</option>
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                     <select
                       value={year}
-                      onChange={e=>setYear(Number(e.target.value))}
+                      onChange={e=>setYear(e.target.value)}
                       disabled={creating}
                       className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                     >
+                      <option value="" disabled>Year</option>
                       {Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                        <option key={y}>{y}</option>
+                        <option key={y} value={y}>{y}</option>
                       ))}
                     </select>
                   </div>
+                  {errors.birthdate && (
+                    <p className="mt-1 text-xs text-red-600">{errors.birthdate}</p>
+                  )}
                 </div>
               </div>
 
@@ -380,6 +474,9 @@ export default function Register() {
                     disabled={creating}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                   />
+                  {errors.phone && (
+                    <p className="mt-1 text-xs text-red-600">{errors.phone}</p>
+                  )}
                 </div>
 
                 <div className="md:col-span-2">
@@ -395,6 +492,9 @@ export default function Register() {
                         className="w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                         required
                       />
+                      {errors.street && (
+                        <p className="mt-1 text-xs text-red-600">{errors.street}</p>
+                      )}
                     </div>
                     <div>
                       <select
@@ -405,12 +505,17 @@ export default function Register() {
                         required
                       >
                         <option value="">Select Brgy.</option>
-                        {Array.from({ length: 62 }, (_, i) => 587 + i).map(brgy => (
+                        <option value="1">Brgy. 587</option>
+                        <option value="1-A">Brgy. 587-A</option>
+                        {Array.from({ length: 62 }, (_, i) => 588 + i).map(brgy => (
                           <option key={brgy} value={brgy - 586}>
                             Brgy. {brgy}
                           </option>
                         ))}
                       </select>
+                      {errors.barangay && (
+                        <p className="mt-1 text-xs text-red-600">{errors.barangay}</p>
+                      )}
                     </div>
                     <div className="grid grid-cols-3 gap-4 col-span-2">
                       <input type="text" value="Manila" readOnly className="rounded-xl border border-slate-300 px-4 py-2.5 bg-gray-100 cursor-not-allowed" />
@@ -432,6 +537,9 @@ export default function Register() {
                     disabled={creating}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {errors.username && (
+                    <p className="mt-1 text-xs text-red-600">{errors.username}</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-slate-700">4-Digit PIN</label>
@@ -460,6 +568,9 @@ export default function Register() {
                       />
                     </button>
                   </div>
+                  {errors.pin && (
+                    <p className="mt-1 text-xs text-red-600">{errors.pin}</p>
+                  )}
                 </div>
               </div>
 

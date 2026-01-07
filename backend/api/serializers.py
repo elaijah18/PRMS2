@@ -7,10 +7,42 @@ from django.utils import timezone
 
 class PatientSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
+    address = serializers.SerializerMethodField()
+    
     class Meta:
         model = Patient
         fields = '__all__'
         read_only_fields = ('patient_id',)
+    
+    # Address (may be street + barangay, can be changed)
+    def get_address(self, obj):
+        """Compose address from street and barangay"""
+        parts = []
+        if obj.barangay:
+            parts.append(obj.barangay.strip())
+        if obj.street:
+            parts.append(obj.street.strip())
+        return ' '.join(parts) if parts else ''
+    
+    def to_internal_value(self, data):
+        """Handle the address field when updating"""
+        # If address is provided, try to split it into street and barangay
+        if 'address' in data:
+            address = data.pop('address', '').strip()
+            if address:
+                # Split the address: assume last word is street, rest is barangay
+                parts = address.split()
+                if len(parts) > 1:
+                    data['street'] = ' '.join(parts[1:])
+                    data['barangay'] = parts[0]
+                else:
+                    data['street'] = address
+                    data['barangay'] = ''
+            else:
+                data['street'] = ''
+                data['barangay'] = ''
+        
+        return super().to_internal_value(data)
     
     def validate_contact(self, value):
         if not re.match(r'^\d{11}$', value):
