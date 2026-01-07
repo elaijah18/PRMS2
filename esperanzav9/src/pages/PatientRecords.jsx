@@ -387,35 +387,6 @@ export default function PatientRecords() {
     }
   }
 
-  const startEditing = (patient) => {
-    const patientToEdit = {
-      ...patient,
-      first_name: patient.first_name || '',
-      middle_name: patient.middle_name || '',
-      last_name: patient.last_name || '',
-      sex: patient.sex || 'Male',
-      birthdate: patient.birthdate || patient.dob || '',
-      street: patient.street || '',
-      barangay: patient.barangay || '',
-    }
-    
-    setCurrentPatient(patientToEdit)
-    setEditing(true)
-    
-    setLatestVitals(patient.latest_vitals || null)
-    
-    fetchVitals(patient.patient_id)
-    
-    const currentSearch = searchParams.get('q')
-    if (currentSearch) {
-      nav(`/staff/patient-records/${patient.patient_id}?q=${encodeURIComponent(currentSearch)}`, { replace: true })
-    } else {
-      nav(`/staff/patient-records/${patient.patient_id}`, { replace: true })
-    }
-  }
-  
-  const [totalCount, setTotalCount] = useState(0)
-
   return (
     <section className="relative mx-auto max-w-5xl px-2 py-16">
       <div className="absolute top-4 left-4">
