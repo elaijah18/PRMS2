@@ -15,6 +15,9 @@ from datetime import timedelta
 from dotenv import load_dotenv
 import os
 
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+
 TIME_ZONE = 'Asia/Manila'
 USE_TZ = True
 
@@ -151,6 +154,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATIC_URL = 'static/'
 
 # Default primary key field type
@@ -158,26 +162,31 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = [
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
-    "http://192.168.1.31:5173", 
-    "http://192.168.1.31:3000"
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "http://127.0.0.1:5173",
+#     "http://localhost:5173",
+#     "http://192.168.1.31:5173", 
+#     "http://192.168.1.31:3000"
+# ]
+
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
 CORS_ALLOW_CREDENTIALS = True  # Fixed typo
 
 # CSRF settings for session auth:
-CSRF_TRUSTED_ORIGINS = [
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
-    "http://192.168.1.31:5173", 
-    "http://192.168.1.31:3000"
-]
+# CSRF_TRUSTED_ORIGINS = [
+#     "http://127.0.0.1:5173",
+#     "http://localhost:5173",
+#     "http://192.168.1.31:5173", 
+#     "http://192.168.1.31:3000"
+# ]
+
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:5173').split(',')
 
 # Session Settings - ADD THESE NEW LINES
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Store sessions in MySQL
 SESSION_COOKIE_HTTPONLY = True  # Prevents JavaScript from accessing the cookie (XSS protection)
-SESSION_COOKIE_SECURE = False  # Set to True when you use HTTPS in production
+# SESSION_COOKIE_SECURE = False  # Set to True when you use HTTPS in production
+SESSION_COOKIE_SECURE = not DEBUG 
 SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
 SESSION_COOKIE_AGE = 86400  # Session expires after 24 hours (in seconds)
 SESSION_COOKIE_DOMAIN = None  # Allow cookies on both localhost and 127.0.0.1
