@@ -11,3 +11,4 @@ python-dotenv
 mysqlclient
 gunicorn
 whitenoise
+reportlab
