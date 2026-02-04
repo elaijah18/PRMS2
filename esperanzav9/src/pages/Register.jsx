@@ -9,6 +9,8 @@ import fingerPrint from '../assets/fingerprint-sensor.png'
 import showPinIcon from '../assets/show.png'
 import hidePinIcon from '../assets/hide.png'
 import Popup from '../components/ErrorPopup'
+import { API_URL } from '../config'
+
 
 const months = [
   'January','February','March','April','May','June',
@@ -165,7 +167,7 @@ export default function Register() {
     }
 
     try {
-      const registerRes = await fetch('http://localhost:8000/patients/', {
+      const registerRes = await fetch('${API_URL}/patients/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -179,7 +181,7 @@ export default function Register() {
         return
       }
 
-      const loginRes = await fetch('http://localhost:8000/login/', {
+      const loginRes = await fetch('${API_URL}/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

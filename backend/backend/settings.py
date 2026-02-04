@@ -169,7 +169,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #     "http://192.168.1.31:3000"
 # ]
 
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+# CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Local Vite dev server
+    "https://prms2-frontend.onrender.com",  # Your deployed frontend
+]
 CORS_ALLOW_CREDENTIALS = True  # Fixed typo
 
 # CSRF settings for session auth:

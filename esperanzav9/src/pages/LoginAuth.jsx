@@ -10,6 +10,7 @@ import fingerprintIcon from '../assets/fingerprint.png'
 import showPinIcon from '../assets/show.png'
 import hidePinIcon from '../assets/hide.png'
 import Popup from '../components/ErrorPopup'
+import { API_URL } from '../config'
 
 export default function LoginAuth() {
   const { state } = useLocation()
@@ -51,7 +52,7 @@ export default function LoginAuth() {
     setIsAuthenticating(true)
 
     try {
-      const res = await fetch(`http://localhost:8000/login/`, {
+      const res = await fetch(`${API_URL}/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -104,7 +105,7 @@ export default function LoginAuth() {
     setFpStatus('scanning')
 
     try {
-      const res = await fetch('http://localhost:8000/fingerprint/scan/', {
+      const res = await fetch('${API_URL}/fingerprint/scan/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
@@ -122,7 +123,7 @@ export default function LoginAuth() {
 
   const checkFingerprintMatch = async () => {
     try {
-      const res = await fetch('http://localhost:8000/fingerprint/match/', {
+      const res = await fetch('${API_URL}/fingerprint/match/', {
         method: 'GET',
         credentials: 'include'
       })
@@ -197,7 +198,7 @@ export default function LoginAuth() {
 
   const stopFingerprintScan = async () => {
     try {
-      await fetch('http://localhost:8000/fingerprint/stop/', {
+      await fetch('${API_URL}/fingerprint/stop/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })

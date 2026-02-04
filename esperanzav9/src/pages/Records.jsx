@@ -13,6 +13,8 @@ import bmiIcon from '../assets/body-mass-index.png'
 import printIcon from '../assets/printer-green.png'
 import logoutIcon from '../assets/logout-green.png'
 import Popup from '../components/ErrorPopup'
+import { API_URL } from '../config'
+
 
 export default function Records() {
   const [profile, setProfile] = useState(null)
@@ -46,7 +48,7 @@ export default function Records() {
     const loadAuthenticatedData = async () => {
       try {
         // Get profile first
-        const profileRes = await fetch('http://localhost:8000/patient/profile/', { credentials: 'include' })
+        const profileRes = await fetch('${API_URL}/patient/profile/', { credentials: 'include' })
         if (profileRes.status === 401) {
           nav('/login')
           return
@@ -70,7 +72,7 @@ export default function Records() {
         }
 
         // Fetch vitals using patient_id (same endpoint as PatientRecords)
-        const vitalsRes = await fetch(`http://localhost:8000/patient/vitals/${patientId}/`, { 
+        const vitalsRes = await fetch(`${API_URL}/patient/vitals/${patientId}/`, { 
           credentials: 'include' 
         })
         
@@ -109,7 +111,7 @@ export default function Records() {
   // ---------- actions ----------
   const handleLogout = async () => {
     try {
-      await fetch('http://localhost:8000/logout/', {
+      await fetch('${API_URL}/logout/', {
         method: 'POST',
         credentials: 'include',
       })
@@ -135,7 +137,7 @@ export default function Records() {
         return
       }
       
-      const response = await fetch(`http://localhost:8000/print-vitals/${patientId}/`, {
+      const response = await fetch(`${API_URL}/print-vitals/${patientId}/`, {
         credentials: 'include'
       })
       
@@ -170,7 +172,7 @@ export default function Records() {
       }
       
       const response = await fetch(
-        `http://localhost:8000/print-vitals/${patientId}/?format=pdf`,
+        `${API_URL}/print-vitals/${patientId}/?format=pdf`,
         { credentials: 'include' }
       )
       
@@ -401,7 +403,7 @@ export default function Records() {
           return
         }
 
-        const res = await fetch("http://localhost:8000/print-pos58/", {
+        const res = await fetch("${API_URL}/print-pos58/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ patient_id: patientId }),

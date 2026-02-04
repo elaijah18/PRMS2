@@ -1,10 +1,12 @@
 // Reports.jsx - Connected to Database
 import React, { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom' // ✅ Added useSearchParams
+import { useNavigate, useSearchParams } from 'react-router-dom' // 
 import backIcon from '../assets/arrow.png'
 import accIcon from '../assets/account.png'
 import searchIcon from '../assets/search.png'
 import Popup from '../components/ErrorPopup'
+import { API_URL } from '../config'
+
 
 const TEAL = '#406E65'
 const TABLE_BG = '#DCEBE8'
@@ -56,7 +58,7 @@ export default function Reports() {
   const fetchPatients = async () => {
     setLoading(true)
     try {
-      const res = await fetch('http://localhost:8000/patients/', {
+      const res = await fetch('${API_URL}/patients/', {
         credentials: 'include',
       })
       if (!res.ok) throw new Error('Failed to fetch patients')

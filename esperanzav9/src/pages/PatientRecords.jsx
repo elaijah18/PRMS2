@@ -6,6 +6,7 @@ import backIcon from '../assets/arrow.png'
 import accIcon from '../assets/account.png'
 import historyIcon from '../assets/history.png'
 import Popup from '../components/ErrorPopup'
+import { API_URL } from '../config'
 
 const BRAND = {
   bg: '#DCEBE8',
@@ -92,7 +93,7 @@ export default function PatientRecords() {
       payload.birthdate = birthdate
     }
 
-    const res = await fetch(`http://localhost:8000/patients/${currentPatient.patient_id}/`, {
+    const res = await fetch(`${API_URL}/patients/${currentPatient.patient_id}/`, {
       method: 'PATCH', 
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -131,8 +132,8 @@ export default function PatientRecords() {
     setLoading(true)
     try {
       const url = searchTerm
-        ? `http://localhost:8000/all-patients/?search=${encodeURIComponent(searchTerm)}`
-        : `http://localhost:8000/all-patients/`
+        ? `${API_URL}/all-patients/?search=${encodeURIComponent(searchTerm)}`
+        : `${API_URL}/all-patients/`
       const res = await fetch(url, { credentials: 'include' })
       if (!res.ok) throw new Error('Failed to fetch patients')
       const data = await res.json()
@@ -158,7 +159,7 @@ export default function PatientRecords() {
     }
 
     try {
-      const res = await fetch(`http://localhost:8000/patient/vitals/${patientUrlId}/`, { 
+      const res = await fetch(`${API_URL}/patient/vitals/${patientUrlId}/`, { 
         credentials: 'include',
       })
 
@@ -275,7 +276,7 @@ export default function PatientRecords() {
     }
     
     try {
-      const res = await fetch(`http://localhost:8000/receive-vitals/`, {
+      const res = await fetch(`${API_URL}/receive-vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -354,7 +355,7 @@ export default function PatientRecords() {
     if (!patientToArchive) return
     
     try {
-      const res = await fetch(`http://localhost:8000/archive-patient/${patientToArchive}/`, {
+      const res = await fetch(`${API_URL}/archive-patient/${patientToArchive}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
