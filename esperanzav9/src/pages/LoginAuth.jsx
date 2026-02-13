@@ -104,7 +104,7 @@ export default function LoginAuth() {
     setFpStatus('scanning')
 
     try {
-      const res = await fetch('http://localhost:8000/fingerprint/scan/', {
+      const res = await fetch('http://localhost:8000/biometric/scan/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
@@ -122,7 +122,7 @@ export default function LoginAuth() {
 
   const checkFingerprintMatch = async () => {
     try {
-      const res = await fetch('http://localhost:8000/fingerprint/match/', {
+      const res = await fetch('http://localhost:8000/biometric/match/', {
         method: 'GET',
         credentials: 'include'
       })
@@ -197,7 +197,7 @@ export default function LoginAuth() {
 
   const stopFingerprintScan = async () => {
     try {
-      await fetch('http://localhost:8000/fingerprint/stop/', {
+      await fetch('http://localhost:8000/biometric/stop/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })

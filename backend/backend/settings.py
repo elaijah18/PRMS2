@@ -162,7 +162,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://192.168.1.31:5173", 
-    "http://192.168.1.31:3000"
+    "http://192.168.1.31:3000",
+    # Kiosk Mode Ports
+    "http://127.0.0.1:8080",
+    "http://localhost:8080",
+    "http://192.168.1.31:8080",
 ]
 CORS_ALLOW_CREDENTIALS = True  # Fixed typo
 
@@ -171,7 +175,11 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://192.168.1.31:5173", 
-    "http://192.168.1.31:3000"
+    "http://192.168.1.31:3000",
+    # Kiosk Mode Ports
+    "http://127.0.0.1:8080",
+    "http://localhost:8080",
+    "http://192.168.1.31:8080",
 ]
 
 # Session Settings - ADD THESE NEW LINES

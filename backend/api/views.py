@@ -785,24 +785,28 @@ def test_rpi_connection(request):
 def login(request):
     pin = request.data.get("pin")
     login_type = request.data.get("login_type")  # 'staff' or 'patient'
-    username = request.data.get("username")  # For patient login
+    username = request.data.get("username")
 
     if not pin:
         return Response({"error": "PIN required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not username:
+        return Response({"error": "Username required"}, status=status.HTTP_400_BAD_REQUEST)
 
     pin = str(pin).strip()
+    username = username.strip()
     
     if login_type == "staff":
         try:
-            # Get all staff and check hashed PINs one by one
-            staff_member = None
-            for s in HCStaff.objects.all():
-                if s.staff_pin and check_password(pin, s.staff_pin):
-                    staff_member = s
-                    break
-
-            if not staff_member:
-                return Response({"error": "Invalid staff PIN"}, status=status.HTTP_401_UNAUTHORIZED)
+            # Find staff by username and verify PIN
+            try:
+                staff_member = HCStaff.objects.get(username=username)
+            except HCStaff.DoesNotExist:
+                return Response({"error": "Invalid username"}, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # Verify PIN
+            if not staff_member.staff_pin or not check_password(pin, staff_member.staff_pin):
+                return Response({"error": "Invalid PIN"}, status=status.HTTP_401_UNAUTHORIZED)
 
             # CREATE SESSION (server-side)
             request.session["user_id"] = staff_member.staff_id
@@ -810,7 +814,7 @@ def login(request):
 
             return Response({
                 "role": "staff",
-                "staff_id": staff_member.staff_id if hasattr(staff_member, 'staff_id') else staff_member.staff_id
+                "staff_id": staff_member.staff_id
             })
 
         except Exception as e:
