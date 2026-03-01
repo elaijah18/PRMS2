@@ -17,36 +17,39 @@ export default function Temperature() {
 
   const API_BASE = 'http://localhost:8000/api';
 
-  // 🔹 Start the Arduino sensor when user clicks Start
-const handleStart = async () => {
-  setLoading(true);
-  setError('');
-  setTemp(null);
+  const handleStart = async () => {
+    setLoading(true);
+    setError('');
+    setTemp(null);
 
-  try {
-    const res = await fetch(`${API_BASE}/start_vitals/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    try {
+      const res = await fetch(`${API_BASE}/start_vitals/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
-    const data = await res.json();
-    console.log("🔥 Response from Django:", data);
+      const data = await res.json();
+      console.log("🔥 Response from Django:", data);
 
-    if (res.ok && data.temperature !== undefined) {
-      const tempValue = Number(data.temperature.toFixed(1));
-      setTemp(tempValue);
-      sessionStorage.setItem('temperature', String(tempValue));
-      console.log('🌡️ Current temperature:', tempValue);
-    } else {
-      setError('No temperature data received from backend.');
+      if (res.ok && data.temperature !== undefined) {
+        const tempValue = Number(data.temperature.toFixed(1));
+        setTemp(tempValue);
+
+        // ✅ Save to both keys so all pages can read it
+        sessionStorage.setItem('temperature', String(tempValue));  // for VitalSigns.jsx
+        sessionStorage.setItem('step_temp', String(tempValue));    // for BP.jsx triage + SESSION_KEYS
+
+        console.log('🌡️ Current temperature:', tempValue);
+      } else {
+        setError('No temperature data received from backend.');
+      }
+    } catch (err) {
+      console.error('Error fetching temperature:', err);
+      setError('Failed to connect to backend.');
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('Error fetching temperature:', err);
-    setError('Failed to connect to backend.');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // 🔹 Fetch latest temperature from Raspberry Pi Django API
   const fetchTemperature = async () => {
@@ -57,7 +60,11 @@ const handleStart = async () => {
       if (res.ok && data.temperature !== undefined) {
         const tempValue = Number(data.temperature.toFixed(1));
         setTemp(tempValue);
+
+        // ✅ Save to both keys
         sessionStorage.setItem('temperature', String(tempValue));
+        sessionStorage.setItem('step_temp', String(tempValue));
+
         console.log('🌡️ Current temperature:', tempValue);
       } else {
         console.warn('⚠️ No temperature data received:', data);
@@ -69,9 +76,7 @@ const handleStart = async () => {
     }
   };
 
-  // 🔹 Auto-fetch temperature every second once started
-
-  // 🔹 Save temperature to backend (optional)
+  // 🔹 Save temperature to backend
   const saveTemperature = async (temperatureValue) => {
     try {
       const patientId = sessionStorage.getItem('patient_id');
@@ -80,19 +85,25 @@ const handleStart = async () => {
         return;
       }
 
-      const response = await fetch(`${API_BASE}/receive_vital_signs/`, {
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
+
+      const response = await fetch(`${API_BASE}/receive-vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           patient_id: patientId,
           temperature: temperatureValue,
+          id: currentVitalId || null,
         }),
       });
 
       const result = await response.json();
       if (response.ok) {
         console.log('Temperature saved:', result);
+        if (result?.data?.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
       } else {
         console.error('Failed to save temperature:', result);
       }
@@ -122,7 +133,6 @@ const handleStart = async () => {
         </div>
       )}
 
-      {/* 🔹 START BUTTON */}
       {!ready ? (
         <div className="mt-8 text-center">
           <button
@@ -137,7 +147,6 @@ const handleStart = async () => {
           {loading && <p className="mt-3 text-slate-600">Initializing sensor…</p>}
         </div>
       ) : (
-        // 🔹 Once temperature is ready
         <div className="mt-8 space-y-6 text-center">
           <ResultCard label="Temperature" value={temp} unit="°C" />
           <button
@@ -152,7 +161,6 @@ const handleStart = async () => {
         </div>
       )}
 
-      {/* Small loading modal */}
       <SmallModal open={showInit}>
         <p className="text-xl font-semibold text-slate-800">Initializing temperature…</p>
         <p className="mt-1 text-slate-600">Hold steady.</p>
@@ -160,3 +168,5 @@ const handleStart = async () => {
     </section>
   );
 }
+
+

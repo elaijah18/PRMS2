@@ -16,6 +16,43 @@ export default function Pulse() {
 
   const API_BASE = 'http://localhost:8000/api';
 
+  // ✅ Save pulse and spo2 to backend individually like Temperature.jsx
+  const savePulseToBackend = async (heartRate, oxygenSaturation) => {
+    try {
+      const patientId = sessionStorage.getItem('patient_id');
+      if (!patientId) {
+        console.warn('No patient_id found in session.');
+        return;
+      }
+
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
+
+      const response = await fetch(`http://localhost:8000/receive-vitals/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          patient_id: patientId,
+          heart_rate: heartRate,             // ✅ matches Arduino JSON key
+          oxygen_saturation: oxygenSaturation,
+          id: currentVitalId || null,
+        }),
+      });
+
+      const result = await response.json();
+      if (response.ok) {
+        console.log('Pulse and SpO2 saved:', result);
+        if (result?.data?.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
+      } else {
+        console.error('Failed to save pulse:', result);
+      }
+    } catch (err) {
+      console.error('Error saving pulse:', err);
+    }
+  };
+
   const handleStart = async () => {
     setLoading(true);
     setError('');
@@ -33,6 +70,7 @@ export default function Pulse() {
       console.log('🔥 Response from Django:', data);
 
       if (res.ok) {
+        // ✅ matches your Arduino JSON key
         const heartRate = data.heart_rate;
         const oxygenSaturation = data.spo2;
 
@@ -41,6 +79,10 @@ export default function Pulse() {
 
         sessionStorage.setItem(SESSION_KEYS.hr, String(heartRate));
         sessionStorage.setItem(SESSION_KEYS.spo2, String(oxygenSaturation));
+
+        // ✅ Save to MySQL just like Temperature.jsx does
+        await savePulseToBackend(heartRate, oxygenSaturation);
+
       } else {
         setError(data.error || 'Failed to get pulse data.');
       }
@@ -108,3 +150,5 @@ export default function Pulse() {
     </section>
   );
 }
+
+

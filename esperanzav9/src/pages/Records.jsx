@@ -53,19 +53,12 @@ export default function Records() {
   const normalizeBP = (obj) => {
     if (!obj) return null
     if (typeof obj === 'string') return obj
-    // flat names
-    if (obj.blood_pressure) return obj.blood_pressure
-    if (obj.bp) return obj.bp
-    // nested containers
-    if (obj.vitals) {
-      const fromNested = normalizeBP(obj.vitals)
-      if (fromNested) return fromNested
-    }
-    if (obj.latest_vitals) {
-      const fromLatest = normalizeBP(obj.latest_vitals)
-      if (fromLatest) return fromLatest
-    }
-    // split fields
+    if (obj.blood_pressure) return String(obj.blood_pressure).replace(/\s*mmHg$/i, '').trim()
+    if (obj.bp) return String(obj.bp).replace(/\s*mmHg$/i, '').trim()
+    // nested
+    if (obj.vitals) { const r = normalizeBP(obj.vitals); if (r) return r }
+    if (obj.latest_vitals) { const r = normalizeBP(obj.latest_vitals); if (r) return r }
+    // split systolic/diastolic fields
     const sys = obj.systolic ?? obj.sys
     const dia = obj.diastolic ?? obj.dia
     if (sys != null && dia != null) return `${sys}/${dia}`
@@ -73,25 +66,7 @@ export default function Records() {
   }
 
   const getRowBP = (row) => {
-    // 1) try any shape on the row
-    const found = normalizeBP(row)
-    if (found) return found
-
-    // 2) fallback: if user just entered BP on this same day and backend
-    //    didn't include it in history yet, show the local value
-    const fallback = sessionStorage.getItem('step_bp') || sessionStorage.getItem('bp')
-    const ts = Number(sessionStorage.getItem('step_bp_ts') || 0)
-    if (fallback && ts) {
-      const when = new Date(ts)
-      // row date may be ISO date/time or just YYYY-MM-DD
-      const rowDate = row.date ? new Date(row.date) : null
-      if (rowDate && !Number.isNaN(rowDate.getTime()) && isSameYMD(when, rowDate)) {
-        return fallback
-      }
-      // if row doesn't have a date, still use fallback for the top-most (today) row
-      if (!row.date && isSameYMD(when, new Date())) return fallback
-    }
-    return null
+    return normalizeBP(row) ?? null
   }
 
   // ---------- data load ----------
@@ -126,12 +101,12 @@ export default function Records() {
 
           // latest (normalize + fallback)
           if (vitalsData.latest) {
-            const latestBP = normalizeBP(vitalsData.latest) ||
-                             sessionStorage.getItem('step_bp') ||
-                             sessionStorage.getItem('bp') ||
-                             null
+            const latestBP = normalizeBP(vitalsData.latest) 
+                          ?? sessionStorage.getItem('step_bp') 
+                          ?? sessionStorage.getItem('bp') 
+                          ?? null
             setLatest({
-              heartRate: vitalsData.latest.pulse_rate ?? vitalsData.latest.hr ?? null,
+              heartRate: vitalsData.latest.heart_rate ?? vitalsData.latest.hr ?? null,
               temperature: vitalsData.latest.temperature ?? null,
               spo2: vitalsData.latest.spo2 ?? vitalsData.latest.oxygen_saturation ?? null,
               bloodPressure: latestBP,
@@ -142,18 +117,41 @@ export default function Records() {
           }
 
           // history (normalize each)
+          // history (normalize each, preserve nested objects for BP)
           if (Array.isArray(vitalsData.history)) {
-            const normalized = vitalsData.history.map(r => ({
-              ...r,
-              pulse_rate: r.pulse_rate ?? r.hr ?? null,
-              temperature: r.temperature ?? null,
-              spo2: r.spo2 ?? r.oxygen_saturation ?? null,
-              height: r.height ?? r.height_cm ?? null,
-              weight: r.weight ?? r.weight_kg ?? null,
-              bmi: r.bmi ?? null,
-              // BP handled on display
-            }))
-            setRows(normalized)
+            const normalized = vitalsData.history.map(r => {
+              const vitalsObj = r.vitals ?? r.latest_vitals ?? {};
+
+              // safely get systolic/diastolic
+              const bp = r.blood_pressure ?? r.bp ?? vitalsObj.blood_pressure ?? vitalsObj.bp ?? null;
+              let bpDisplay = '—';
+
+              if (bp) {
+                if (typeof bp === 'object') {
+                  const sys = bp.systolic ?? '—';
+                  const dia = bp.diastolic ?? '—';
+                  bpDisplay = `${sys}/${dia}`;          // ← no unit baked in
+                } else {
+                  // strip any trailing " mmHg" already in the string
+                  bpDisplay = String(bp).replace(/\s*mmHg$/i, '').trim();
+                }
+              }
+
+              return {
+                ...r,
+                heart_rate: r.heart_rate ?? r.hr ?? vitalsObj.heart_rate ?? vitalsObj.hr ?? null,
+                temperature: r.temperature ?? vitalsObj.temperature ?? null,
+                spo2: r.spo2 ?? vitalsObj.spo2 ?? vitalsObj.oxygen_saturation ?? null,
+                height: r.height ?? vitalsObj.height ?? vitalsObj.height_cm ?? null,
+                weight: r.weight ?? vitalsObj.weight ?? vitalsObj.weight_kg ?? null,
+                bmi: r.bmi ?? vitalsObj.bmi ?? null,
+                blood_pressure: bpDisplay, // now safe display string
+                vitals: r.vitals ?? vitalsObj,         // keep nested for other use
+                latest_vitals: r.latest_vitals ?? vitalsObj,
+              }
+            });
+
+            setRows(normalized);
           }
         }
 
@@ -333,7 +331,7 @@ export default function Records() {
         weight: `${results.weight} kg`,
         height: `${results.height} cm`,
         bmi: `${bmi} kg/m²`,
-        pulse_rate: `${results.heartRate} bpm`,
+        heart_rate: `${results.heartRate} bpm`,
         temperature: `${results.temperature} °C`,
         oxygen_saturation: `${results.spo2} %`,
         blood_pressure: `${results.bp} mmHg`
@@ -412,7 +410,7 @@ export default function Records() {
             <div className="val">{data.measurements.bmi}</div>
             
             <div className="label">Pulse Rate</div>
-            <div className="val">{data.measurements.pulse_rate}</div>
+            <div className="val">{data.measurements.heart_rate}</div>
             
             <div className="label">SpO₂</div>
             <div className="val">{data.measurements.oxygen_saturation}</div>
@@ -657,8 +655,20 @@ export default function Records() {
                 return (
                   <tr key={r.id || i} className="border-t border-slate-100 text-[#406E65]">
                     <td className="px-4 py-3">{r.date ?? '—'}</td>
-                    <td className="px-4 py-3">{r.pulse_rate != null ? `${r.pulse_rate} bpm` : '—'}</td>
-                    <td className="px-4 py-3">{bpDisplay ?? '—'}</td>
+                    <td className="px-4 py-3">{r.heart_rate != null ? `${r.heart_rate} bpm` : '—'}</td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const val = rows.length === 1
+                          ? (latest?.bloodPressure
+                              ? String(latest.bloodPressure).replace(/\s*mmHg$/i, '').trim()
+                              : (r.blood_pressure && r.blood_pressure !== '—' ? r.blood_pressure : (getRowBP(r) ?? '—')))
+                          : (r.blood_pressure && r.blood_pressure !== '—' ? r.blood_pressure : (getRowBP(r) ?? '—'));
+                        return val && val !== '—' ? `${val} mmHg` : '—';
+                      })()}
+                    </td>
+
+
+
                     <td className="px-4 py-3">
                       {typeof r.temperature === 'number' ? `${r.temperature} °C` : (r.temperature ?? '—')}
                     </td>

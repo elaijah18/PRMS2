@@ -36,47 +36,45 @@ export default function BP() {
 
   const saveBP = async (bpValue) => {
     try {
-      setSaving(true)
-      const patientId = sessionStorage.getItem('patient_id')
+      const patientId = sessionStorage.getItem('patient_id');
       if (!patientId) {
-        console.warn('No patient_id found in session.')
-        return
+        console.warn('No patient_id found in session.');
+        return;
       }
 
-      // Get the consolidated vital record ID from previous steps
-      const currentVitalId = sessionStorage.getItem('current_vital_id')
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
 
-      const res = await fetch(`${API_BASE}/receive-vitals/`, {
+      const response = await fetch('http://localhost:8000/receive-vitals/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           patient_id: patientId,
-          blood_pressure: bpValue,
+          blood_pressure: bpValue,   // ✅ only change from height
           id: currentVitalId || null,
-          complete: true, 
         }),
-      })
+      });
 
-      const result = await res.json().catch(() => ({}))
-      
-      if (!res.ok) {
-        console.error('Save BP failed:', result)
-        return
+      const result = await response.json();
+
+      if (response.ok) {
+        console.log('Blood pressure saved:', result);
+
+        // ✅ Same logic as height
+        if (result?.data?.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
+      } else {
+        console.error('Failed to save blood pressure:', result);
       }
 
-      console.log('Blood pressure saved:', result)
-      
-      // Store the vital_id if returned
-      if (result?.data?.id) {
-        sessionStorage.setItem('current_vital_id', result.data.id)
-      }
     } catch (err) {
-      console.error('Error saving blood pressure:', err)
-    } finally {
-      setSaving(false)
+      console.error('Error saving blood pressure:', err);
     }
-  }
+  };
+
+
+
 
   const handleComplete = () => {
     // Gather any other vitals already in session for triage

@@ -25,7 +25,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 
-SERIAL_PORT = 'COM5'  # Adjust if using ACM0    
+SERIAL_PORT = '/dev/ttyUSB1'  # Adjust if using ACM0    
 BAUD_RATE = 9600
 IS_SCANNING = False
 
@@ -388,7 +388,7 @@ def start_vitals(request):
             start_time = time.time()
             line = ""
             
-            while (time.time() - start_time) < 6:
+            while (time.time() - start_time) < 15:
                 if ser.in_waiting:
                     line = ser.readline().decode(errors='ignore').strip()
                     if line:
@@ -450,7 +450,7 @@ def fetch_temperature(request):
 
 
 @api_view(['GET'])
-def fetch_pulse_rate(request):
+def fetch_heart_rate(request):
     """Fetch latest heart rate from Arduino"""
     ser = get_serial()
     if ser is None:
@@ -463,11 +463,11 @@ def fetch_pulse_rate(request):
                 if line:
                     try:
                         data = json.loads(line)
-                        pulse_rate = data.get("pulse_rate")
-                        if pulse_rate is not None:
-                            latest_vitals["pulse_rate"] = int(pulse_rate)
-                            print(f"Heart Rate: {pulse_rate} bpm")
-                            return Response({"pulse_rate": pulse_rate})
+                        heart_rate = data.get("heart_rate")
+                        if heart_rate is not None:
+                            latest_vitals["heart_rate"] = int(heart_rate)
+                            print(f"Heart Rate: {heart_rate} bpm")
+                            return Response({"heart_rate": heart_rate})
                     except json.JSONDecodeError:
                         pass
             
@@ -642,7 +642,7 @@ def update_vitals(request, id):
 @api_view(['POST'])
 def receive_vital_signs(request):
     """
-    Handles vital sign data (weight, height, pulse_rate, etc.)
+    Handles vital sign data (weight, height, heart_rate, etc.)
     Updates existing record for today if incomplete, or creates new one.
     """
     data = request.data
@@ -657,14 +657,8 @@ def receive_vital_signs(request):
         return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
 
     # Try to find an existing record by ID (sent by frontend)
-    vital_id = data.get('id')
     vital_signs = None
 
-    if vital_id:
-        try:
-            vital_signs = VitalSigns.objects.get(id=vital_id, patient=patient)
-        except VitalSigns.DoesNotExist:
-            vital_signs = None
 
     # If no ID given, find today's incomplete record
     if not vital_signs:
@@ -684,13 +678,12 @@ def receive_vital_signs(request):
         # If we found one but it's already complete, reset so we can create a new one
         if vital_signs:
             all_filled = all([
-                vital_signs.weight,
-                vital_signs.height,
-                vital_signs.pulse_rate,
-                vital_signs.temperature5,
-                vital_signs.oxygen_saturation,
-                vital_signs.blood_pressure,
-                
+                vital_signs.weight is not None,
+                vital_signs.height is not None,
+                vital_signs.heart_rate is not None,
+                vital_signs.temperature is not None,
+                vital_signs.oxygen_saturation is not None,
+                vital_signs.blood_pressure is not None,
             ])
             if all_filled:
                 vital_signs = None
@@ -699,52 +692,61 @@ def receive_vital_signs(request):
     if not vital_signs:
         vital_signs = VitalSigns.objects.create(
             patient=patient,
-            date_time_recorded=timezone.now()
         )
 
-    # --- Update only the provided fields ---
-    for field in ['pulse_rate', 'temperature', 'oxygen_saturation', 'weight', 'height', 'blood_pressure']:
-        if field in data and data[field] is not None:
-            setattr(vital_signs, field, data[field])
+    # --- Map frontend key names to model field names ---
+    field_map = {
+        'heart_rate': 'heart_rate',
+        'heart_rate': 'heart_rate',           # frontend may send heart_rate
+        'temperature': 'temperature',
+        'spo2': 'oxygen_saturation',           # frontend may send spo2
+        'oxygen_saturation': 'oxygen_saturation',
+        'weight': 'weight',
+        'height': 'height',
+        'blood_pressure': 'blood_pressure',
+    }
 
-    vital_signs.date_time_recorded = timezone.now()
+    for frontend_key, model_field in field_map.items():
+        if frontend_key in data and data[frontend_key] is not None:
+            setattr(vital_signs, model_field, data[frontend_key])
+
     vital_signs.save()
-    
+
     all_vitals_complete = all([
-        vital_signs.blood_pressure,
-        vital_signs.pulse_rate,
-        vital_signs.temperature,
-        vital_signs.oxygen_saturation,
-        vital_signs.weight,
-        vital_signs.height,
+        vital_signs.blood_pressure is not None,
+        vital_signs.heart_rate is not None,
+        vital_signs.temperature is not None,
+        vital_signs.oxygen_saturation is not None,
+        vital_signs.weight is not None,
+        vital_signs.height is not None,
     ])
-    
+
     if all_vitals_complete:
-    # Check if patient is already in queue TODAY with active status
+        # Check if patient is already in queue TODAY with active status
         today = timezone.now().date()
         existing_queue = QueueEntry.objects.filter(
             patient=patient,
             entered_at__date=today,
             status__in=['WAITING', 'SERVING']
         ).first()
-        
+
         if not existing_queue:
             # Compute priority based on vitals
             priority = compute_patient_priority(patient)
-            
+
             # Add to queue
             QueueEntry.objects.create(
                 patient=patient,
                 priority_status=priority,
                 entered_at=timezone.now()
             )
-        
+
     return Response({
         "message": "Vital signs saved successfully",
         "data": {
-            "id": vital_signs.id,
+            "id": vital_signs.vitals_id,
             "patient_id": patient.patient_id,
-            "pulse_rate": vital_signs.pulse_rate,
+            "heart_rate": vital_signs.heart_rate,
             "temperature": vital_signs.temperature,
             "oxygen_saturation": vital_signs.oxygen_saturation,
             "weight": vital_signs.weight,
@@ -753,6 +755,8 @@ def receive_vital_signs(request):
             "timestamp": vital_signs.date_time_recorded,
         },
     }, status=status.HTTP_200_OK)
+
+
     
 @api_view(['GET'])
 def test_rpi_connection(request):
@@ -881,10 +885,10 @@ def get_patient_vitals(request):
                 bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
             
             latest_data = {
-                'pulse_rate': latest_vital.pulse_rate,
+                'heart_rate': latest_vital.heart_rate,
                 'temperature': latest_vital.temperature,
                 'spo2': latest_vital.oxygen_saturation,
-                'blood_pressure': None,  # Add blood pressure fields to your model if needed
+                'blood_pressure': latest_vital.blood_pressure,  # Add blood pressure fields to your model if needed
                 'height': latest_vital.height,
                 'weight': latest_vital.weight,
                 'bmi': bmi_value
@@ -894,10 +898,10 @@ def get_patient_vitals(request):
         history_data = []
         for vital in vitals_queryset:
             history_data.append({
-                'id': vital.id,
+                'id': vital.vitals_id,
                 'date': vital.date_time_recorded.strftime('%Y-%m-%d %H:%M'),
-                'pulse_rate': vital.pulse_rate,
-                'blood_pressure': None,  # Add blood pressure fields to your model if needed
+                'heart_rate': vital.heart_rate,
+                'blood_pressure': vital.blood_pressure,  # Add blood pressure fields to your model if needed
                 'temperature': vital.temperature,
                 'spo2': vital.oxygen_saturation,
                 'height': vital.height,
@@ -928,7 +932,7 @@ def get_patient_vitals_by_id(request, patient_id): # <-- NEW FUNCTION
         patient = Patient.objects.get(patient_id=patient_id)
         
         # 2. Get all vitals for this patient, ordered by most recent first
-        vitals_queryset = VitalSigns.objects.filter(patient=patient).order_by('-date_time_recorded')
+        vitals_queryset = VitalSigns.objects.filter(patient=patient).order_by('-vitals_id')
         
         latest_vital = vitals_queryset.first()
         latest_data = None
@@ -942,9 +946,9 @@ def get_patient_vitals_by_id(request, patient_id): # <-- NEW FUNCTION
             
             # Map latest vitals data
             latest_data = {
-                'pulse_rate': latest_vital.pulse_rate,
+                'heart_rate': latest_vital.heart_rate,
                 'temperature': latest_vital.temperature,
-                'oxygen_saturation': latest_vital.oxygen_saturation,
+                'spo2': latest_vital.oxygen_saturation,
                 'blood_pressure': latest_vital.blood_pressure, # ADDED: Ensure BP is included
                 'height': latest_vital.height,
                 'weight': latest_vital.weight,
@@ -960,12 +964,12 @@ def get_patient_vitals_by_id(request, patient_id): # <-- NEW FUNCTION
                 bmi_value = round(vital.weight / (height_m * height_m), 1)
 
             history_data.append({
-                'id': vital.id,
+                'id': vital.vitals_id,
                 'date': vital.date_time_recorded.strftime('%Y-%m-%d %H:%M'), 
-                'pulse_rate': vital.pulse_rate,
+                'heart_rate': vital.heart_rate,
                 'blood_pressure': vital.blood_pressure,
                 'temperature': vital.temperature,
-                'oxygen_saturation': vital.oxygen_saturation,
+                'spo2': vital.oxygen_saturation,
                 'height': vital.height,
                 'weight': vital.weight,
                 'bmi': bmi_value 
@@ -1113,11 +1117,11 @@ def get_all_patients(request):
     latest_vitals_map = VitalSigns.objects.filter(
         patient__in=patients_queryset
     ).values('patient').annotate(
-        latest_id=Max('id')
+        latest_id=Max('vitals_id')
     ).values_list('latest_id', flat=True)
 
     # Fetch the actual latest VitalSigns objects using their IDs
-    latest_vitals = VitalSigns.objects.filter(id__in=latest_vitals_map)
+    latest_vitals = VitalSigns.objects.filter(vitals_id__in=latest_vitals_map)
     
     # Map them by patient.patient_id (the string ID) for easy lookup
     vitals_dict = {v.patient.patient_id: v for v in latest_vitals}
@@ -1142,7 +1146,7 @@ def get_all_patients(request):
                 bmi_value = round(vital.weight / (height_m * height_m), 1)
 
             latest_vital_data = {
-                'pulse_rate': vital.pulse_rate,
+                'heart_rate': vital.heart_rate,
                 'temperature': vital.temperature,
                 'oxygen_saturation': vital.oxygen_saturation,
                 'blood_pressure': vital.blood_pressure,
@@ -1334,7 +1338,7 @@ def print_patient_vitals(request, patient_id=None):
                 "weight": f"{latest_vital.weight} kg" if latest_vital.weight else "—",
                 "height": f"{latest_vital.height} cm" if latest_vital.height else "—",
                 "bmi": f"{bmi_value} kg/m²" if bmi_value else "—",
-                "pulse_rate": f"{latest_vital.pulse_rate} bpm" if latest_vital.pulse_rate else "—",
+                "heart_rate": f"{latest_vital.heart_rate} bpm" if latest_vital.heart_rate else "—",
                 "temperature": f"{latest_vital.temperature} °C" if latest_vital.temperature else "—",
                 "oxygen_saturation": f"{latest_vital.oxygen_saturation} %" if latest_vital.oxygen_saturation else "—",
                 "blood_pressure": f"{latest_vital.blood_pressure} mmHg" if latest_vital.blood_pressure else "—"
@@ -1404,10 +1408,10 @@ def get_priority_reasons(vital_signs):
         elif vital_signs.temperature <= 35:
             reasons.append("Hypothermia")
     
-    if vital_signs.pulse_rate:
-        if vital_signs.pulse_rate > 100:
+    if vital_signs.heart_rate:
+        if vital_signs.heart_rate > 100:
             reasons.append("Elevated heart rate")
-        elif vital_signs.pulse_rate < 60:
+        elif vital_signs.heart_rate < 60:
             reasons.append("Low heart rate")
     
     if vital_signs.oxygen_saturation:
@@ -1495,7 +1499,7 @@ def generate_vitals_pdf(print_data):
     y = draw_lr("Weight", measurements["weight"], y)
     y = draw_lr("Height", measurements["height"], y)
     y = draw_lr("BMI", measurements["bmi"], y)
-    y = draw_lr("Pulse Rate", measurements["pulse_rate"], y)
+    y = draw_lr("Heart Rate", measurements["heart_rate"], y)
     y = draw_lr("SpO2", measurements["oxygen_saturation"], y)
     y = draw_lr("Temperature", measurements["temperature"], y)
     y = draw_lr("Blood Pressure", measurements["blood_pressure"], y)
@@ -1670,7 +1674,7 @@ Age: {age_str}
 ID: {patient.patient_id}
 
 TEMP: {latest_vital.temperature or '—'} °C
-PULSE: {latest_vital.pulse_rate or '—'} bpm
+PULSE: {latest_vital.heart_rate or '—'} bpm
 SPO2: {latest_vital.oxygen_saturation or '—'} %
 HEIGHT: {latest_vital.height or '—'} cm
 WEIGHT: {latest_vital.weight or '—'} kg
@@ -1755,7 +1759,7 @@ Measurements
 Weight          {vitals.weight or "—"} kg
 Height          {vitals.height or "—"} cm
 BMI             {bmi_str} kg/m²
-Heart Rate      {vitals.pulse_rate or "—"} bpm
+Heart Rate      {vitals.heart_rate or "—"} bpm
 SpO2            {vitals.oxygen_saturation or "—"} %
 Temp            {vitals.temperature or "—"} °C
 BP              {vitals.blood_pressure or "—"} mmHg

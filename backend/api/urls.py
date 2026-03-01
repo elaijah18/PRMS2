@@ -38,7 +38,7 @@ urlpatterns = [
     
     path('start_vitals/', views.start_vitals, name='start_vitals'),
     path('fetch_temperature/', views.fetch_temperature, name='fetch_temperature'),
-    path('fetch_heart_rate/', views.fetch_pulse_rate, name='fetch_heart_rate'),
+    path('fetch_heart_rate/', views.fetch_heart_rate, name='fetch_heart_rate'),
     path('fetch_spo2/', views.fetch_spo2, name='fetch_spo2'),
     path('fetch_height/', views.fetch_height, name='fetch_height'),
     path('fetch_weight/', views.fetch_weight, name='fetch_weight'),

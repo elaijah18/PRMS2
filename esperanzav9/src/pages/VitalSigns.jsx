@@ -104,15 +104,17 @@ export default function VitalSigns() {
           return
         }
 
-        const vitalsPayload = {
-          patient_id,
-          pulse_rate: Number(results.heartRate) || null,
-          temperature: Number(results.temperature) || null,
-          oxygen_saturation: Number(results.spo2) || null,
-          blood_pressure: results.bp && results.bp !== '—' ? results.bp : null,
-          height: Number(results.height) || null,
-          weight: Number(results.weight) || null,
+        const vitalsPayload = { 
+          patient_id, 
+          heart_rate: Number(results.heartRate) > 0 ? Number(results.heartRate) : null, 
+          temperature: Number(results.temperature) > 0 ? Number(results.temperature) : null, 
+          oxygen_saturation: Number(results.spo2) > 0 ? Number(results.spo2) : null, 
+          blood_pressure: results.bp && results.bp !== '—' ? results.bp : null, 
+          height: Number(results.height) > 0 ? Number(results.height) : null, 
+          weight: Number(results.weight) > 0 ? Number(results.weight) : null, 
         }
+
+
 
         const vitalsRes = await fetch(`${API_URL}/receive-vitals/`, {
           method: 'POST',

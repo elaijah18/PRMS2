@@ -15,6 +15,43 @@ export default function Height() {
 
   const API_BASE = 'http://localhost:8000/api';
 
+  // ✅ NEW: Save height to backend individually like Temperature.jsx and Weight.jsx
+  const saveHeight = async (heightValue) => {
+    try {
+      const patientId = sessionStorage.getItem('patient_id');
+      if (!patientId) {
+        console.warn('No patient_id found in session.');
+        return;
+      }
+
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
+
+      const response = await fetch(`http://localhost:8000/receive-vitals/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          patient_id: patientId,
+          height: heightValue,
+          id: currentVitalId || null,
+        }),
+      });
+
+      const result = await response.json();
+      if (response.ok) {
+        console.log('Height saved:', result);
+        // ✅ Save the record ID so the next step updates the same record
+        if (result?.data?.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
+      } else {
+        console.error('Failed to save height:', result);
+      }
+    } catch (err) {
+      console.error('Error saving height:', err);
+    }
+  };
+
   const handleStart = async () => {
     setLoading(true);
     setShowInit(true);
@@ -22,7 +59,6 @@ export default function Height() {
     setHeight(null);
 
     try {
-      // Trigger Arduino to measure all vitals including height
       const res = await fetch(`${API_BASE}/start_vitals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,6 +72,9 @@ export default function Height() {
         setHeight(measuredHeight);
         sessionStorage.setItem(SESSION_KEYS.height, String(measuredHeight));
         console.log('📏 Measured height:', measuredHeight);
+
+        // ✅ Save to MySQL just like Temperature.jsx does
+        await saveHeight(measuredHeight);
       } else {
         setError(data.error || 'No height data received from Arduino.');
       }
@@ -100,3 +139,5 @@ export default function Height() {
     </section>
   );
 }
+
+
