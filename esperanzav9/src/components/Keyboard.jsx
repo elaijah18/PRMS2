@@ -184,7 +184,9 @@ export default function Keyboard({ pressedKeys = new Set(), onKeyPress, labels =
                     "h-11 md:h-12 min-w-0 rounded-md transition-colors",
                     "font-medium text-[18px] leading-none",
                     flexSize,
-                    isPressed(key)
+                    (key === "SHIFT1" || key === "SHIFT2") && shiftOn
+                      ? "bg-[#426f66] text-white"
+                      : isPressed(key)
                       ? "bg-[#426f66] text-white"
                       : "bg-[#dcebe8] text-[#426f66] hover:bg-[#cfe3de]",
                     special && "text-sm"

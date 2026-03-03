@@ -248,7 +248,7 @@ export default function LoginAuth() {
     setTimeout(() => setPressedKeys(new Set()), 120)
 
     if (/^[A-Za-z0-9]$/.test(key)) {
-      setUsername(u => u + key.toLowerCase())
+      setUsername(u => u + key)
       setInvalidKeyMsg('')
       return
     }

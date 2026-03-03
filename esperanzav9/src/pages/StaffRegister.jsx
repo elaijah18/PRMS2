@@ -217,19 +217,19 @@ export default function StaffRegister() {
     // Accept letters for all fields, numbers only for non-name fields, special chars only for email
     if (/^[A-Za-z]$/.test(key) || (/^[0-9]$/.test(key) && !isNameField) || (focusedField === 'email' && /^[._@-]$/.test(key))) {
       if (focusedField === 'first_name') {
-        setFirstName(v => v + key.toLowerCase())
+        setFirstName(v => v + key)
       } else if (focusedField === 'middle_name') {
-        setMiddleName(v => v + key.toLowerCase())
+        setMiddleName(v => v + key)
       } else if (focusedField === 'last_name') {
-        setLastName(v => v + key.toLowerCase())
+        setLastName(v => v + key)
       } else if (focusedField === 'position') {
-        setPosition(v => v + key.toLowerCase())
+        setPosition(v => v + key)
       } else if (focusedField === 'department') {
-        setDepartment(v => v + key.toLowerCase())
+        setDepartment(v => v + key)
       } else if (focusedField === 'username') {
-        setUsername(u => u + key.toLowerCase())
+        setUsername(u => u + key)
       } else if (focusedField === 'email') {
-        setEmail(e => e + key.toLowerCase())
+        setEmail(e => e + key)
       }
       if (focusedField) {
         setFieldInvalidChar(focusedField, false)

@@ -243,15 +243,15 @@ export default function Register() {
     // Allow letters, numbers (except in name fields), and space
     if (/^[A-Za-z]$/.test(key) || (/^[0-9]$/.test(key) && !isNameField)) {
       if (focusedField === 'first_name') {
-        setFirstName(v => v + key.toLowerCase())
+        setFirstName(v => v + key)
       } else if (focusedField === 'middle_name') {
-        setMiddleName(v => v + key.toLowerCase())
+        setMiddleName(v => v + key)
       } else if (focusedField === 'last_name') {
-        setLastName(v => v + key.toLowerCase())
+        setLastName(v => v + key)
       } else if (focusedField === 'street') {
-        setAddress(a => ({ ...a, street: a.street + key.toLowerCase() }))
+        setAddress(a => ({ ...a, street: a.street + key }))
       } else if (focusedField === 'username') {
-        setUsername(u => u + key.toLowerCase())
+        setUsername(u => u + key)
       }
       if (focusedField) {
         setFieldInvalidChar(focusedField, false)
