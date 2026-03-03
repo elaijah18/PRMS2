@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
 import ResultCard from '../../components/ResultCard';
 import PulseImg from '../../assets/pulse.png';
+import RetryButton from '../../components/RetryButton';
 import { SESSION_KEYS, initModalDelay } from './utils';
 
 export default function Pulse() {
@@ -133,6 +134,13 @@ export default function Pulse() {
           <ResultCard label="Heart Rate" value={hr} unit="bpm" />
           <ResultCard label="Oxygen Saturation" value={spo2} unit="%" />
           <div className="md:col-span-2 text-center">
+            <RetryButton
+              onClick={() => {
+                setHr(null);
+                setSpo2(null);
+                setError('');
+              }}
+            />
             <button
               onClick={() => nav('/vitals/temperature')}
               className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"

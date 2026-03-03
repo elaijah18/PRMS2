@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
 import ResultCard from '../../components/ResultCard';
+import RetryButton from '../../components/RetryButton';
 import TemperaturePic from '../../assets/temperature.png';
 
 export default function Temperature() {
@@ -149,15 +150,23 @@ export default function Temperature() {
       ) : (
         <div className="mt-8 space-y-6 text-center">
           <ResultCard label="Temperature" value={temp} unit="°C" />
-          <button
-            onClick={() => {
-              saveTemperature(temp);
-              nav('/vitals/bp');
-            }}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
-          >
-            Continue
-          </button>
+          <div className="flex justify-center gap-4">
+            <RetryButton
+              onClick={() => {
+                setTemp(null);
+                setError('');
+              }}
+            />
+            <button
+              onClick={() => {
+                saveTemperature(temp);
+                nav('/vitals/bp');
+              }}
+              className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+            >
+              Continue
+            </button>
+          </div>
         </div>
       )}
 

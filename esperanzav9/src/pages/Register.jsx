@@ -1,6 +1,8 @@
 // Register.jsx - Continuous fingerprint enrollment with auto-retry
 import React, { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Keyboard from '../components/Keyboard'
+import NumPad from '../components/NumPad'
 import bgRegister from '../assets/bgreg.png'
 import fingerPrint from '../assets/fingerprint-sensor.png'
 import showPinIcon from '../assets/show.png'
@@ -54,6 +56,23 @@ export default function Register() {
   const [enrollmentFingerprintId, setEnrollmentFingerprintId] = useState(null)
   const [registeredPatientId, setRegisteredPatientId] = useState(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [pressedKeys, setPressedKeys] = useState(new Set())
+  const [showUsernameKeyboard, setShowUsernameKeyboard] = useState(false)
+  const [showPinNumPad, setShowPinNumPad] = useState(false)
+  const [showPhoneNumPad, setShowPhoneNumPad] = useState(false)
+  const [invalidCharErrors, setInvalidCharErrors] = useState({})
+  const [usesKeyboard, setUsesKeyboard] = useState(false)
+  const [focusedField, setFocusedField] = useState(null)
+
+  const setFieldInvalidChar = (field, isInvalid, message = 'Invalid character') => {
+    setInvalidCharErrors(prev => {
+      if (!isInvalid && !prev[field]) return prev
+      return {
+        ...prev,
+        [field]: isInvalid ? message : ''
+      }
+    })
+  }
 
   const dob = useMemo(() => {
     if (!month || !day || !year) return ''
@@ -206,6 +225,119 @@ export default function Register() {
       .join(' ')
   }
 
+  const onKeyboardPress = (key) => {
+    const keyForPressState = /^[a-z]$/.test(key) ? key.toUpperCase() : key
+    setPressedKeys(new Set([keyForPressState]))
+    setTimeout(() => setPressedKeys(new Set()), 120)
+
+    // Prevent numbers in name fields
+    const isNameField = ['first_name', 'middle_name', 'last_name'].includes(focusedField)
+    if (/^[0-9]$/.test(key) && isNameField) {
+      setFieldInvalidChar(focusedField, true, 'Only letters allowed')
+      setTimeout(() => {
+        setFieldInvalidChar(focusedField, false)
+      }, 2000)
+      return
+    }
+
+    // Allow letters, numbers (except in name fields), and space
+    if (/^[A-Za-z]$/.test(key) || (/^[0-9]$/.test(key) && !isNameField)) {
+      if (focusedField === 'first_name') {
+        setFirstName(v => v + key.toLowerCase())
+      } else if (focusedField === 'middle_name') {
+        setMiddleName(v => v + key.toLowerCase())
+      } else if (focusedField === 'last_name') {
+        setLastName(v => v + key.toLowerCase())
+      } else if (focusedField === 'street') {
+        setAddress(a => ({ ...a, street: a.street + key.toLowerCase() }))
+      } else if (focusedField === 'username') {
+        setUsername(u => u + key.toLowerCase())
+      }
+      if (focusedField) {
+        setFieldInvalidChar(focusedField, false)
+      }
+      return
+    }
+
+    if (key === 'BACKSPACE') {
+      if (focusedField === 'first_name') {
+        setFirstName(v => v.slice(0, -1))
+      } else if (focusedField === 'middle_name') {
+        setMiddleName(v => v.slice(0, -1))
+      } else if (focusedField === 'last_name') {
+        setLastName(v => v.slice(0, -1))
+      } else if (focusedField === 'street') {
+        setAddress(a => ({ ...a, street: a.street.slice(0, -1) }))
+      } else if (focusedField === 'username') {
+        setUsername(u => u.slice(0, -1))
+      }
+      if (focusedField) {
+        setFieldInvalidChar(focusedField, false)
+      }
+      return
+    }
+
+    if (key === 'SPACE') {
+      if (focusedField === 'first_name') {
+        setFirstName(v => v + ' ')
+      } else if (focusedField === 'middle_name') {
+        setMiddleName(v => v + ' ')
+      } else if (focusedField === 'last_name') {
+        setLastName(v => v + ' ')
+      } else if (focusedField === 'street') {
+        setAddress(a => ({ ...a, street: a.street + ' ' }))
+      } else if (focusedField === 'username') {
+        setUsername(u => u + ' ')
+      }
+      if (focusedField) {
+        setFieldInvalidChar(focusedField, false)
+      }
+      return
+    }
+
+    if (key === 'KEYBOARD') {
+      setShowUsernameKeyboard(false)
+      setFocusedField(null)
+      return
+    }
+
+    // Forbidden punctuation/special characters
+    if (key && key.length === 1) {
+      if (focusedField) {
+        const activeField = focusedField
+        setFieldInvalidChar(activeField, true, `Invalid character: "${key}"`)
+        setTimeout(() => {
+          setFieldInvalidChar(activeField, false)
+        }, 2000)
+      }
+      return
+    }
+  }
+
+  const onNumPadPress = (key) => {
+    if (/^[0-9]$/.test(key)) {
+      if (pin.length < 4) {
+        setPin(p => p + key)
+        setFieldInvalidChar('pin', false)
+      }
+    } else if (key === 'BACKSPACE') {
+      setPin(p => p.slice(0, -1))
+      setFieldInvalidChar('pin', false)
+    }
+  }
+
+  const onPhoneNumPadPress = (key) => {
+    if (/^[0-9]$/.test(key)) {
+      if (phone.length < 11) {
+        setPhone(ph => ph + key)
+        setFieldInvalidChar('phone', false)
+      }
+    } else if (key === 'BACKSPACE') {
+      setPhone(ph => ph.slice(0, -1))
+      setFieldInvalidChar('phone', false)
+    }
+  }
+
   const submit = async (e) => {
     e.preventDefault()
 
@@ -348,11 +480,11 @@ export default function Register() {
 
   return (
     <section
-      className="relative min-h-screen flex items-center justify-center px-4 py-16 bg-cover bg-center"
+      className={`relative min-h-screen px-4 py-16 ${showUsernameKeyboard ? 'min-h-screen' : 'min-h-screen flex items-center justify-center'}`}
       style={{ backgroundImage: `url(${bgRegister})` }}
     >
       <div className="absolute inset-0 bg-emerald-900/40 backdrop-blur-sm" />
-      <div className="relative w-full max-w-5xl bg-white rounded-3xl shadow-xl p-6 md:p-10">
+      <div className={`relative w-full max-w-5xl bg-white rounded-3xl shadow-xl p-6 md:p-10 mx-auto ${(showUsernameKeyboard || showPinNumPad || showPhoneNumPad) ? 'mb-[22rem]' : ''}`}>
         <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-emerald-700 mb-8">
           Register
         </h2>
@@ -366,12 +498,25 @@ export default function Register() {
                   <label className="text-sm font-semibold text-slate-700">First Name</label>
                   <input
                     value={first_name}
-                    onChange={e => setFirstName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}
+                    onChange={e => {
+                      const next = e.target.value
+                      setFieldInvalidChar('first_name', /[^A-Za-z ]/.test(next))
+                      setFirstName(next.replace(/[^A-Za-z ]/g, '').slice(0, 50))
+                    }}
+                    onFocus={() => {
+                      setShowUsernameKeyboard(true)
+                      setShowPinNumPad(false)
+                      setShowPhoneNumPad(false)
+                      setFocusedField('first_name')
+                    }}
                     required
                     disabled={creating}
                     maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {invalidCharErrors.first_name && (
+                    <p className="mt-1 text-xs text-red-600">{invalidCharErrors.first_name}</p>
+                  )}
                   {errors.first_name && (
                     <p className="mt-1 text-xs text-red-600">{errors.first_name}</p>
                   )}
@@ -380,12 +525,26 @@ export default function Register() {
                   <label className="text-sm font-semibold text-slate-700">Middle Name</label>
                   <input
                     value={middle_name}
-                    onChange={e => setMiddleName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}
+                    onChange={e => {
+                      const next = e.target.value
+                      setFieldInvalidChar('middle_name', /[^A-Za-z ]/.test(next))
+                      setMiddleName(next.replace(/[^A-Za-z ]/g, '').slice(0, 50))
+                    }}
+                    onFocus={() => {
+                      setShowUsernameKeyboard(true)
+                      setShowPinNumPad(false)
+                      setShowPhoneNumPad(false)
+                      setFocusedField('middle_name')
+                    }}
+                    onBlur={() => setFocusedField(null)}
                     placeholder="(optional)"
                     disabled={creating}
                     maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {invalidCharErrors.middle_name && (
+                    <p className="mt-1 text-xs text-red-600">{invalidCharErrors.middle_name}</p>
+                  )}
                   {errors.middle_name && (
                     <p className="mt-1 text-xs text-red-600">{errors.middle_name}</p>
                   )}
@@ -394,12 +553,25 @@ export default function Register() {
                   <label className="text-sm font-semibold text-slate-700">Last Name</label>
                   <input
                     value={last_name}
-                    onChange={e => setLastName(e.target.value.replace(/[^A-Za-z ]/g, '').slice(0, 50))}                
+                    onChange={e => {
+                      const next = e.target.value
+                      setFieldInvalidChar('last_name', /[^A-Za-z ]/.test(next))
+                      setLastName(next.replace(/[^A-Za-z ]/g, '').slice(0, 50))
+                    }}
+                    onFocus={() => {
+                      setShowUsernameKeyboard(true)
+                      setShowPinNumPad(false)
+                      setShowPhoneNumPad(false)
+                      setFocusedField('last_name')
+                    }}
                     required
                     disabled={creating}
                     maxLength={50}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {invalidCharErrors.last_name && (
+                    <p className="mt-1 text-xs text-red-600">{invalidCharErrors.last_name}</p>
+                  )}
                   {errors.last_name && (
                     <p className="mt-1 text-xs text-red-600">{errors.last_name}</p>
                   )}
@@ -413,6 +585,7 @@ export default function Register() {
                   <select
                     value={sex}
                     onChange={e=>setSex(e.target.value)}
+                    onFocus={() => setShowUsernameKeyboard(false)}
                     disabled={creating}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   >
@@ -430,6 +603,7 @@ export default function Register() {
                     <select
                       value={month}
                       onChange={e=>setMonth(e.target.value)}
+                      onFocus={() => setShowUsernameKeyboard(false)}
                       disabled={creating}
                       className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                     >
@@ -439,6 +613,7 @@ export default function Register() {
                     <select
                       value={day}
                       onChange={e=>setDay(e.target.value)}
+                      onFocus={() => setShowUsernameKeyboard(false)}
                       disabled={creating}
                       className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                     >
@@ -448,6 +623,7 @@ export default function Register() {
                     <select
                       value={year}
                       onChange={e=>setYear(e.target.value)}
+                      onFocus={() => setShowUsernameKeyboard(false)}
                       disabled={creating}
                       className="rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                     >
@@ -469,11 +645,24 @@ export default function Register() {
                   <label className="text-sm font-semibold text-slate-700">Phone Number</label>
                   <input
                     value={phone}
-                    onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                    onChange={e => {
+                      const next = e.target.value
+                      setFieldInvalidChar('phone', /[^0-9]/.test(next))
+                      setPhone(next.replace(/\D/g, '').slice(0, 11))
+                    }}
+                    onFocus={() => {
+                      setShowPhoneNumPad(true)
+                      setShowUsernameKeyboard(false)
+                      setShowPinNumPad(false)
+                      setFocusedField('phone')
+                    }}
                     required
                     disabled={creating}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:opacity-50"
                   />
+                  {invalidCharErrors.phone && (
+                    <p className="mt-1 text-xs text-red-600">{invalidCharErrors.phone}</p>
+                  )}
                   {errors.phone && (
                     <p className="mt-1 text-xs text-red-600">{errors.phone}</p>
                   )}
@@ -487,11 +676,24 @@ export default function Register() {
                         type="text"
                         placeholder="Street / Building / House No."
                         value={address.street}
-                        onChange={e => setAddress({ ...address, street: e.target.value })}
+                        onChange={e => {
+                          const next = e.target.value
+                          setFieldInvalidChar('street', /[^A-Za-z0-9 ]/.test(next))
+                          setAddress({ ...address, street: next.replace(/[^A-Za-z0-9 ]/g, '') })
+                        }}
+                        onFocus={() => {
+                          setShowUsernameKeyboard(true)
+                          setShowPinNumPad(false)
+                          setShowPhoneNumPad(false)
+                          setFocusedField('street')
+                        }}
                         disabled={creating}
                         className="w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                         required
                       />
+                      {invalidCharErrors.street && (
+                        <p className="mt-1 text-xs text-red-600">{invalidCharErrors.street}</p>
+                      )}
                       {errors.street && (
                         <p className="mt-1 text-xs text-red-600">{errors.street}</p>
                       )}
@@ -500,6 +702,7 @@ export default function Register() {
                       <select
                         value={address.barangay}
                         onChange={e => setAddress({ ...address, barangay: e.target.value })}
+                        onFocus={() => setShowUsernameKeyboard(false)}
                         disabled={creating}
                         className="w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                         required
@@ -532,11 +735,24 @@ export default function Register() {
                   <label className="text-sm font-semibold text-slate-700">Username</label>
                   <input
                     value={username}
-                    onChange={e=>setUsername(e.target.value)}
+                    onChange={e => {
+                      const next = e.target.value
+                      setFieldInvalidChar('username', /[^A-Za-z0-9 ]/.test(next))
+                      setUsername(next.replace(/[^A-Za-z0-9 ]/g, ''))
+                    }}
+                    onFocus={() => {
+                      setShowUsernameKeyboard(true)
+                      setShowPinNumPad(false)
+                      setShowPhoneNumPad(false)
+                      setFocusedField('username')
+                    }}
                     required
                     disabled={creating}
                     className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 disabled:opacity-50"
                   />
+                  {invalidCharErrors.username && (
+                    <p className="mt-1 text-xs text-red-600">{invalidCharErrors.username}</p>
+                  )}
                   {errors.username && (
                     <p className="mt-1 text-xs text-red-600">{errors.username}</p>
                   )}
@@ -546,7 +762,17 @@ export default function Register() {
                   <div className="relative mt-2">
                     <input
                       value={pin}
-                      onChange={e=>setPin(e.target.value.replace(/\D/g, '').slice(0,4))}
+                      onChange={e => {
+                        const next = e.target.value
+                        setFieldInvalidChar('pin', /[^0-9]/.test(next))
+                        setPin(next.replace(/\D/g, '').slice(0,4))
+                      }}
+                      onFocus={() => {
+                        setShowPinNumPad(true)
+                        setShowUsernameKeyboard(false)
+                        setShowPhoneNumPad(false)
+                        setFocusedField('pin')
+                      }}
                       required
                       maxLength={4}
                       inputMode="numeric"
@@ -568,17 +794,58 @@ export default function Register() {
                       />
                     </button>
                   </div>
+                  {invalidCharErrors.pin && (
+                    <p className="mt-1 text-xs text-red-600">{invalidCharErrors.pin}</p>
+                  )}
                   {errors.pin && (
                     <p className="mt-1 text-xs text-red-600">{errors.pin}</p>
                   )}
                 </div>
               </div>
 
-              <div className="text-right">
+              {showUsernameKeyboard && (
+                <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-2 backdrop-blur">
+                  <div className="mx-auto max-w-5xl">
+                    <div className="h-[15rem] w-full overflow-hidden">
+                      <Keyboard pressedKeys={pressedKeys} onKeyPress={onKeyboardPress} mode={focusedField === 'pin' ? 'pin' : 'letters'} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showPinNumPad && (
+                <div className="fixed inset-x-0 bottom-0 justify-items-center z-20 border-t border-slate-200 bg-white/90 p-2 backdrop-blur">
+                  <div className="mx-auto max-w-5xl">
+                    <div className="h-[15rem] w-full overflow-hidden">
+                      <NumPad onKeyPress={onNumPadPress} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showPhoneNumPad && (
+                <div className="fixed inset-x-0 bottom-0 z-20 justify-items-center border-t border-slate-200 bg-white/90 p-2 backdrop-blur">
+                  <div className="mx-auto max-w-5xl">
+                    <div className="h-[15rem] w-full overflow-hidden">
+                      <NumPad onKeyPress={onPhoneNumPadPress} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => nav('/patient-login')}
+                  className="mt-6 px-8 py-3 rounded-xl border-2 border-gray-300 text-[#426F66] font-medium
+                            hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
                 <button
                   onClick={submit}
                   disabled={creating}
-                  className="mt-6 bg-[#6ec1af] hover:bg-emerald-600 disabled:opacity-60 text-white font-bold px-8 py-3 rounded-xl shadow-md transition-colors"
+                  className="mt-6 bg-[#6ec1af] hover:bg-emerald-800/70 disabled:opacity-60 text-white font-bold px-8 py-3 rounded-xl shadow-md transition-colors"
                 >
                   {creating ? (fpStatus === 'enrolling' ? 'Enrolling Fingerprint...' : 'Creating Account...') : 'Register'}
                 </button>

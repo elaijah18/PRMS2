@@ -30,8 +30,8 @@ export default function Home() {
               for individuals and families.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link className="px-5 py-3 rounded-lg font-semibold text-white bg-[#6ec1af] hover:bg-emerald-800/70 transition" to="/services">Explore Services</Link>
-              <Link className="btn-outline outline-[#6ec1af]" to="/login">Register/Login</Link>
+              <Link className="px-5 py-3 rounded-lg font-semibold text-white bg-[#6ec1af] hover:bg-emerald-800/70 transition" to="/register">Register</Link>
+              <Link className="btn-outline outline-[#6ec1af]" to="/login">Login</Link>
             </div>
           </div>
           

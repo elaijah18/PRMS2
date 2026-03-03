@@ -4,12 +4,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import NumPad from '../components/NumPad'
+import Keyboard from '../components/Keyboard'
 import FingerprintScanner from '../components/FingerprintScanner'
 import pinIcon from '../assets/dialpadalt.png'
 import fingerprintIcon from '../assets/fingerprint.png'
 import showPinIcon from '../assets/show.png'
 import hidePinIcon from '../assets/hide.png'
 import Popup from '../components/ErrorPopup'
+import backIcon from '../assets/arrow.png'
 
 export default function LoginAuth() {
   const { state } = useLocation()
@@ -23,6 +25,9 @@ export default function LoginAuth() {
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [showPin, setShowPin] = useState(false)
   const [popupMsg, setPopupMsg] = useState('')
+  const [pressedKeys, setPressedKeys] = useState(new Set())
+  const [showUsernameKeyboard, setShowUsernameKeyboard] = useState(false)
+  const [InvalidKeyMsg, setInvalidKeyMsg] = useState('')
   
   // Fingerprint
   const [fpStatus, setFpStatus] = useState('idle')
@@ -237,18 +242,90 @@ export default function LoginAuth() {
     }
   }
 
+  const onKeyboardPress = (key) => {
+    const keyForPressState = /^[a-z]$/.test(key) ? key.toUpperCase() : key
+    setPressedKeys(new Set([keyForPressState]))
+    setTimeout(() => setPressedKeys(new Set()), 120)
+
+    if (/^[A-Za-z0-9]$/.test(key)) {
+      setUsername(u => u + key.toLowerCase())
+      setInvalidKeyMsg('')
+      return
+    }
+
+    if (key === 'BACKSPACE') {
+      setUsername(u => u.slice(0, -1))
+      setInvalidKeyMsg('')
+      return
+    }
+
+    if (key === 'SPACE') {
+      setUsername(u => u + ' ')
+      setInvalidKeyMsg('')
+      return
+    }
+
+    if (key === 'ENTER2') {
+      if (pin.length < 4) {
+        setPopupMsg('Please enter your 4-digit PIN.')
+        return
+      }
+      authenticateUser(pin, role)
+      return
+    }
+
+    if (key === 'KEYBOARD') {
+      setShowUsernameKeyboard(false)
+      return
+    }
+
+    // Invalid punctuation/special characters
+    if (key && key.length === 1) {
+      setInvalidKeyMsg(`Invalid character: "${key}"`)
+      setTimeout(() => setInvalidKeyMsg(''), 2000)
+      return
+    }
+  }
+
   const tile =
     'group rounded-3xl bg-[#6ec1af] hover:bg-emerald-800/70 transition-all ' +
     'border border-emerald-500/60 shadow-lg hover:shadow-xl overflow-hidden px-6 py-10'
 
   const pinReady = username.trim() && pin.length === 4
 
+  const handleBack = () => {
+    if (!mode) {
+      nav(-1)
+      return
+    }
+
+    if (mode === 'fp') {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+      stopFingerprintScan()
+      setFpStatus('idle')
+    }
+
+    setShowUsernameKeyboard(false)
+    setMode(null)
+  }
+
   // -----------------------------------------------------
   // RENDER
   // -----------------------------------------------------
 
   return (
-    <section className="mx-auto max-w-5xl px-4 pt-20 pb-16">
+    <section className={`mx-auto max-w-5xl px-4 pt-20 ${showUsernameKeyboard ? 'pb-[22rem]' : 'pb-16'}`}>
+      {/* Back */}
+      <div className="mb-3">
+        <button onClick={handleBack}
+          className="flex items-center gap-2 rounded-xl bg-transparent px-3 py-2 text-[#406E65]">
+          <img src={backIcon} alt="Back" className="h-4 w-4 object-contain" />
+        </button>
+      </div>
+
       <div className="text-center">
         <h2 className="text-3xl md:text-5xl font-extrabold tracking-wide leading-snug 
           bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 
@@ -274,7 +351,7 @@ export default function LoginAuth() {
             className={tile}
             onClick={() => {
               setMode('fp')
-              setScanAttempt(a => a + 1)  // ensure fresh component
+              setScanAttempt(a => a + 1)  
               startFingerprintScan()
             }}
           >
@@ -300,6 +377,7 @@ export default function LoginAuth() {
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                onFocus={() => setShowUsernameKeyboard(true)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     if (!pin || pin.length < 4) {
@@ -311,6 +389,9 @@ export default function LoginAuth() {
                 placeholder="Enter your username"
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
               />
+              {InvalidKeyMsg && (
+                <p className="mt-1 text-sm text-red-600">{InvalidKeyMsg}</p>
+              )}
             </div>
 
             <label className="block text-sm font-medium text-slate-700">4-Digit PIN</label>
@@ -320,6 +401,7 @@ export default function LoginAuth() {
               <input
                 type={showPin ? 'text' : 'password'}
                 value={pin}
+                onFocus={() => setShowUsernameKeyboard(false)}
                 onChange={(e) => {
                   const value = e.target.value.replace(/\D/g, '').slice(0, 4)
                   setPin(value)
@@ -365,6 +447,16 @@ export default function LoginAuth() {
             key={scanAttempt}   // forces remount = resets progress + animation
             onComplete={onFpDone}
           />
+        </div>
+      )}
+
+      {mode === 'pin' && showUsernameKeyboard && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-2 backdrop-blur">
+          <div className="mx-auto max-w-5xl">
+            <div className="h-[15rem] w-full overflow-hidden">
+              <Keyboard pressedKeys={pressedKeys} onKeyPress={onKeyboardPress} />
+            </div>
+          </div>
         </div>
       )}
 

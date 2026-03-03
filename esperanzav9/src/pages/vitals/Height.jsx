@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
 import ResultCard from '../../components/ResultCard';
 import HeightImg from '../../assets/height2.png';
+import RetryButton from '../../components/RetryButton';
 import { SESSION_KEYS, initModalDelay } from './utils';
 
 export default function Height() {
@@ -123,12 +124,20 @@ export default function Height() {
       ) : (
         <div className="mt-8 space-y-6 text-center">
           <ResultCard label="Height" value={height} unit="cm" />
-          <button
-            onClick={() => nav('/vitals/pulse')}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
-          >
-            Continue
-          </button>
+          <div className="flex justify-center gap-4">
+            <RetryButton
+              onClick={() => {
+                setHeight(null);
+                setError('');
+              }}
+            />
+            <button
+              onClick={() => nav('/vitals/pulse')}
+              className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+            >
+              Continue
+            </button>
+          </div>
         </div>
       )}
 

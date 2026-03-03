@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import SmallModal from '../../components/SmallModal';
 import ResultCard from '../../components/ResultCard';
 import { SESSION_KEYS, initModalDelay } from './utils';
+import RetryButton from '../../components/RetryButton';
 import WeightImg from '../../assets/weight2.png';
 
 export default function Weight() {
@@ -124,12 +125,20 @@ export default function Weight() {
       ) : (
         <div className="mt-8 space-y-6 text-center">
           <ResultCard label="Weight" value={weight} unit="kg" />
-          <button
-            onClick={() => nav('/vitals/height')}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
-          >
-            Continue
-          </button>
+          <div className="flex justify-center gap-4">
+            <RetryButton
+              onClick={() => {
+                setWeight(null);
+                setError('');
+              }}
+            />
+            <button
+              onClick={() => nav('/vitals/height')}
+              className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+            >
+              Continue
+            </button>
+          </div>
         </div>
       )}
 

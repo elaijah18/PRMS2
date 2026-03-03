@@ -6,6 +6,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import newUser from '../assets/add-user.png'
 import existingUser from '../assets/patient.png'
+import backIcon from '../assets/arrow.png'
 
 export default function PatientLogin() {
   const [patientType, setPatientType] = useState(null)
@@ -17,6 +18,14 @@ export default function PatientLogin() {
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-16">
+      {/* Back */}
+      <div className="mb-3">
+        <button onClick={() => nav(-1)}
+          className="flex items-center gap-2 rounded-xl bg-transparent px-3 py-2 text-[#406E65]">
+        <img src={backIcon} alt="Back" className="h-4 w-4 object-contain" />
+        </button>
+      </div>
+
       <div className="text-center">
         <h2 className="text-3xl md:text-5xl font-extrabold tracking-wide bg-gradient-to-r 
                        from-emerald-600 via-teal-600 to-emerald-700 bg-clip-text text-transparent">

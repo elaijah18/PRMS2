@@ -1,13 +1,13 @@
 // This file sets up the main application structure with routing and a consistent layout.
 
-import React from 'react'
+// import React from 'react'
 import { Routes, Route } from 'react-router-dom'
-import Navbar from './components/Navbar'
-import Footer from './components/Footer'
+// import Navbar from './components/Navbar'
+// import Footer from './components/Footer'
 import Home from './pages/Home'
-import Services from './pages/Services'
-import About from './pages/About'
-import Contact from './pages/Contact'
+// import Services from './pages/Services'
+// import About from './pages/About'
+// import Contact from './pages/Contact'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import PatientPortal from './pages/PatientPortal'
@@ -28,23 +28,28 @@ import Reports from './pages/Reports'
 import PrivacyNotice from './components/PrivacyNotice'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsofService from './pages/TermsofService'
+import StaffLogin from './pages/StaffLogin'
+import StaffRegister from './pages/StaffRegister'
+import PINVerification from './pages/PINVerification'
 
 export default function App() {
   return (
     <div style={{ backgroundImage: `url(${bgImage})` }} className="min-h-screen bg-cover bg-fixed bg-center">
-      <Navbar />
       <main className="min-h-[calc(100vh-4rem)] bg-white/70">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsofService />} />
-          <Route path="/services" element={<Services />} />
+          {/* <Route path="/services" element={<Services />} />
           <Route path="/about" element={<About />} />
-          <Route path="/contact" element={<Contact />} />
+          <Route path="/contact" element={<Contact />} /> */}
           <Route path="/login" element={<Login />} />
           <Route path="/patient-login" element={<PatientLogin />} /> 
-          <Route path="/login-auth" element={<LoginAuth />} />       
+          <Route path="/pin-verification" element={<PINVerification />} />
+          <Route path="/staff-login" element={<StaffLogin />} />
+          <Route path="/login-auth" element={<LoginAuth />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/staff-register" element={<StaffRegister />} />
           <Route path="/portal" element={<PatientPortal />} />
           <Route path="/vitals" element={<VitalSigns />} />
           <Route path="/vitals/weight" element={<Weight />} />
