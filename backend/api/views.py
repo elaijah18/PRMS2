@@ -25,7 +25,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 
-SERIAL_PORT = '/dev/ttyUSB1'  # Adjust if using ACM0    
+SERIAL_PORT = 'COM6'  # Adjust if using ACM0    
 BAUD_RATE = 9600
 IS_SCANNING = False
 
@@ -1857,36 +1857,17 @@ def get_current_queue_for_display(request):
         return Response({"error": str(e)}, status=500)
 
 
-def get_display_serial():
-    global _display_connection
-    
-    with _display_lock:
-        if _display_connection is None or not _display_connection.is_open:
-            try:
-                _display_connection = serial.Serial(SERIAL_PORT, 9600, timeout=0.5)
-                time.sleep(2)
-                print(f"Display connected to {SERIAL_PORT}")
-            except Exception as e:
-                print(f"Display connection error: {e}")
-                return None
-        return _display_connection
-
-
-@csrf_exempt
-@permission_classes([AllowAny])
 @api_view(['POST'])
 def update_queue_display(request):
-    """Send current queue number to display"""
-    ser = get_display_serial()  # Use separate connection
+    """Send current queue number to the 7-segment display via Q: prefix"""
+    ser = get_serial()  # reuse the same single connection
     if ser is None:
-        return Response({"error": "Display connection error"}, status=500)
+        return Response({"error": "Arduino connection error"}, status=500)
     
     try:
-        # Get currently SERVING patient
         queue_entry = QueueEntry.objects.filter(status='SERVING').first()
         
         if not queue_entry:
-            # Get next WAITING patient
             queue_entry = QueueEntry.objects.filter(
                 status='WAITING'
             ).annotate(
@@ -1901,10 +1882,10 @@ def update_queue_display(request):
         
         queue_number = queue_entry.queue_number if queue_entry else 0
         
-        with _display_lock:
-            ser.write(f"{queue_number}\n".encode())
+        with _serial_lock:
+            ser.write(f"Q:{queue_number}\n".encode())
             ser.flush()
-            print(f"✅ Sent to display: {queue_number}")
+            print(f"Sent to display: Q:{queue_number}")
         
         return Response({
             "message": "Display updated",
@@ -1912,5 +1893,4 @@ def update_queue_display(request):
         }, status=200)
         
     except Exception as e:
-        print(f"Display error: {e}")
         return Response({"error": str(e)}, status=500)
