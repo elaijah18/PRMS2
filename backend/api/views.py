@@ -23,6 +23,7 @@ import serial, json, time, threading
 import atexit
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from django.http import JsonResponse
 
 
 SERIAL_PORT = 'COM6'  # Adjust if using ACM0    
@@ -1901,3 +1902,25 @@ def update_queue_display(request):
         
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+    
+MASTER_PIN = '1111'
+
+@csrf_exempt
+def verify_pin(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            entered_pin = data.get('pin')
+            print(f"Received pin: {repr(entered_pin)}, type: {type(entered_pin)}")  # debug
+
+            # Direct comparison
+            if entered_pin == MASTER_PIN:
+                return JsonResponse({'verified': True})
+            else:
+                # 401 Unauthorized is appropriate for a wrong PIN
+                return JsonResponse({'verified': False, 'error': 'Invalid PIN'}, status=401)
+        
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid data format'}, status=400)
+
+    return JsonResponse({'error': 'Method not allowed'}, status=405)

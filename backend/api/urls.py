@@ -10,7 +10,7 @@ from .views import (PatientViewSet, VitalSignsViewSet, QueueViewSet, StaffViewSe
                     check_enrollment_status, delete_fingerprint,
                     start_fingerprint_scan, check_fingerprint_match, stop_fingerprint_scan,
                     print_patient_vitals, print_queue_ticket, print_to_pos58, print_vitals_and_queue_pos58,
-                    update_queue_display, get_current_queue_for_display
+                    update_queue_display, get_current_queue_for_display, verify_pin
                 )
 
 router = DefaultRouter()
@@ -20,6 +20,8 @@ router.register(r'vitals', VitalSignsViewSet)
 router.register(r'queue', QueueViewSet)
 
 urlpatterns = [ 
+    path('staff/verify-pin/', verify_pin, name='staff/verify-pin'),
+               
     path('', include(router.urls)),    
     path('login/', login, name="login"),
     path('logout/', logout, name="logout"),
@@ -61,7 +63,8 @@ urlpatterns = [
     path("print-vitals-and-queue/", print_vitals_and_queue_pos58),
     
     path('update-display/', update_queue_display, name='update_queue_display'),
-    path('current-display/', get_current_queue_for_display, name='get_current_queue_display')
+    path('current-display/', get_current_queue_for_display, name='get_current_queue_display'),
+    
 ]
 
 
