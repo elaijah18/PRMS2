@@ -9,22 +9,29 @@ from django.db import transaction
 
 #ADDED STAFF USERNAME
 class HCStaff(models.Model):
-    name = models.CharField(max_length=50)
+    staff_id = models.AutoField(primary_key=True)
+    first_name = models.CharField(max_length=50)
+    middle_name = models.CharField(max_length=50, null=True, blank=True)
+    last_name = models.CharField(max_length=50)
     username = models.CharField(max_length=20, unique=True)
-    staff_pin = models.CharField(max_length=255, unique=True)
+    pin = models.CharField(max_length=255, unique=True)
+    phone = models.CharField(max_length=11, default='N/A')
+    email = models.EmailField(max_length=254, default='N/A')
+    position = models.CharField(max_length=50, default='N/A')
+    department = models.CharField(max_length=50, default='N/A')
     
     def set_pin(self, raw_pin):
         """Hashes and sets the staff PIN."""
-        self.staff_pin = make_password(raw_pin)
+        self.pin = make_password(raw_pin)
 
     def check_pin(self, raw_pin):
         """Verifies a raw PIN against the stored hash."""
-        return check_password(raw_pin, self.staff_pin)
+        return check_password(raw_pin, self.pin)
 
     def save(self, *args, **kwargs):
         # Hash the PIN if it’s not already hashed
-        if self.staff_pin and not self.staff_pin.startswith('pbkdf2_'):
-            self.staff_pin = make_password(self.staff_pin)
+        if self.pin and not self.pin.startswith('pbkdf2_'):
+            self.pin = make_password(self.pin)
         super().save(*args, **kwargs)
 
 class Patient(models.Model):    

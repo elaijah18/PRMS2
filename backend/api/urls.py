@@ -1,7 +1,7 @@
 from django.urls import path, include
 from . import views
 from rest_framework.routers import DefaultRouter
-from .views import (PatientViewSet, VitalSignsViewSet, QueueViewSet, login, 
+from .views import (PatientViewSet, VitalSignsViewSet, QueueViewSet, StaffViewSet, login, 
                     get_vitals, receive_vital_signs, update_vitals, get_all_patients, 
                     test_rpi_connection, logout, get_patient_profile, get_patient_vitals,
                     get_patient_vitals_by_id, archive_patient_view, restore_patient_view,
@@ -15,6 +15,7 @@ from .views import (PatientViewSet, VitalSignsViewSet, QueueViewSet, login,
 
 router = DefaultRouter()
 router.register(r'patients', PatientViewSet)
+router.register(r'staff', StaffViewSet)
 router.register(r'vitals', VitalSignsViewSet)
 router.register(r'queue', QueueViewSet)
 

@@ -359,7 +359,7 @@ export default function StaffRegister() {
     setCreating(true)
 
     try {
-      const res = await fetch('http://localhost:8000/staff/register/', {
+      const res = await fetch('http://localhost:8000/staff/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

@@ -6,7 +6,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from .models import Patient, VitalSigns, HCStaff, QueueEntry, ArchivedPatient, ArchivedVitalSigns, ArchivedQueueEntry
 from .models import archive_patient, restore_patient
-from .serializers import PatientSerializer, VitalSignsSerializer, QueueEntrySerializer 
+from .serializers import PatientSerializer, VitalSignsSerializer, QueueEntrySerializer, HCStaffSerializer
 from django.db.models import Q, Case, When, IntegerField, Max  
 from django.utils import timezone  
 from .utils import compute_patient_priority
@@ -585,6 +585,11 @@ class PatientViewSet(viewsets.ModelViewSet):
                 Q(patient_id__icontains=search_term) 
             )
         return queryset
+
+class StaffViewSet(viewsets.ModelViewSet):
+    queryset = HCStaff.objects.all()
+    serializer_class = HCStaffSerializer
+    permission_classes = [AllowAny] 
          
 class VitalSignsViewSet(viewsets.ModelViewSet):
     queryset = VitalSigns.objects.all()
@@ -796,20 +801,22 @@ def login(request):
                 return Response({"error": "Invalid username"}, status=status.HTTP_401_UNAUTHORIZED)
 
             # Verify hashed PIN
-            if not check_password(pin, staff_member.staff_pin):
+            if not check_password(pin, staff_member.pin):
                 return Response({"error": "Invalid PIN"}, status=status.HTTP_401_UNAUTHORIZED)
 
             # Create session
-            request.session["user_id"] = staff_member.id
+            request.session["user_id"] = staff_member.staff_id
             request.session["user_type"] = "staff"
-            request.session["name"] = staff_member.name
+            request.session["first_name"] = staff_member.first_name
 
             return Response({
                 
                 
                 "role": "staff",
-                "name": staff_member.name,
-                "staff_id": staff_member.id
+                "first_name": staff_member.first_name,
+                "middle_name": staff_member.middle_name,
+                "last_name": staff_member.last_name,
+                "staff_id": staff_member.staff_id
             })
 
         except Exception as e:
