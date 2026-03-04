@@ -160,7 +160,7 @@ export default function PINVerification() {
         <div className="mt-6 flex items-center justify-center">
           <button
             onClick={() => nav('/')}
-            className="px-6 py-2 rounded-lg border-2 border-emerald-600 text-emerald-600 
+            className="px-6 py-2 rounded-lg border-[1px] border-[#6ec1af] text-[#4dae9b]/90 
                        text-sm font-bold hover:bg-emerald-50 transition-colors"
           >
             Back to Home
