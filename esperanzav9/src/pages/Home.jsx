@@ -18,9 +18,9 @@ export default function Home() {
               Your trusted partner in health and wellness. We are committed to providing compassionate, patient-centered care
               for individuals and families.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link className="px-5 py-3 rounded-lg font-semibold text-white bg-[#6ec1af] hover:bg-emerald-800/70 transition" to="/register">Register</Link>
-              <Link className="btn-outline outline-[#6ec1af] text-[#426F66]/85" to="/login">Login</Link>
+            <div className="mt-8 text-2xl flex flex-wrap gap-3">
+              <Link className="px-8 py-4 rounded-lg font-semibold text-white bg-[#6ec1af] hover:bg-emerald-800/70 transition" to="/register">Register</Link>
+              <Link className="px-8 py-4 btn-outline outline-[#6ec1af] text-[#426F66]/85" to="/login">Login</Link>
             </div>
           </div>
           
