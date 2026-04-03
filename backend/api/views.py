@@ -24,30 +24,125 @@ import atexit
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.http import JsonResponse
+import time
+import threading
+from django.db import transaction, close_old_connections
+_enrollment_active = threading.Event()
 
+_btn_next_event = threading.Event()
 
-SERIAL_PORT = 'COM6'  # Adjust if using ACM0    
-BAUD_RATE = 9600
+scan_start_times = {
+    "patient": None,
+    "staff": None
+}
+_pending_btn_next = False
+_pending_btn_lock = threading.Lock()
+SCAN_TIMEOUT = 20
+# Add these near your other locks
+_pending_ui_advance = False
+_ui_advance_lock = threading.Lock()
+SERIAL_PORT = 'COM5'
+BAUD_RATE = 115200
 IS_SCANNING = False
 
 _serial_connection = None
-_serial_lock = threading.Lock()
+_serial_lock = threading.RLock()  # <-- Upgraded to RLock (Re-entrant)
 
 _display_connection = None
-_display_lock = threading.Lock()
+_display_lock = threading.RLock() # <-- Upgraded to RLock
 
-def get_serial():
-    """Get persistent serial connection - never close it"""
-    global _serial_connection
+# ── Serial ownership ──────────────────────────────────────────────────────────
+_serial_busy = threading.Event()
+_pending_queue_number = None
+_pending_queue_lock = threading.RLock() # <-- Upgraded to RLock
+
+def _claim_serial():
+    """Mark serial port as busy. Call at the start of every sensor session."""
+    _serial_busy.set()
+
+def _release_serial():
+    """Release serial port, process any pending button clicks, and update display."""
+    global _pending_btn_next
     
+    # --- Execute any deferred button press BEFORE giving up the port ---
+    with _pending_btn_lock:
+        if _pending_btn_next:
+            _pending_btn_next = False
+            print("[Queue] Executing deferred button press from scan/vitals...")
+            if _advance_queue_on_button():
+                _btn_next_event.set()
+    # -------------------------------------------------------------------
+
+    _push_current_queue_to_display() # Force display update FIRST
+    _serial_busy.clear()             # THEN clear the lock
+
+def _push_current_queue_to_display():
+    """Find the current serving/waiting queue number and send it to the display."""
+    try:
+        entry = QueueEntry.objects.filter(status='SERVING').first()
+
+        if not entry:
+            entry = QueueEntry.objects.filter(
+                status='WAITING'
+            ).annotate(
+                priority_order=Case(
+                    When(priority_status='CRITICAL', then=1),
+                    When(priority_status='HIGH', then=2),
+                    When(priority_status='MEDIUM', then=3),
+                    default=4,
+                    output_field=IntegerField()
+                )
+            ).order_by('priority_order', 'entered_at').first()
+
+        queue_number = entry.queue_number if entry else 0
+
+        ser = get_serial()
+        if ser:
+            with _serial_lock:
+                ser.write(f"Q:{queue_number}\n".encode())
+                ser.flush()
+            print(f"[queue display] pushed Q:{queue_number} after serial release")
+
+    except Exception as e:
+        print(f"[queue display] error pushing after release: {e}")
+
+@api_view(['POST'])
+def tare_weight(request):
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Arduino connection error"}, status=500)
+
+    try:
+        with _serial_lock:
+            ser.reset_input_buffer()
+            ser.write(b'TARE\n')
+            ser.flush()
+
+        # tareNoDelay on Arduino takes ~2s to complete internally
+        time.sleep(5.5)
+
+        return Response({"status": "tared", "message": "Scale zeroed successfully"})
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+    
+def get_serial():
+    """Get (or re-open) persistent serial connection."""
+    global _serial_connection
+
     with _serial_lock:
         if _serial_connection is None or not _serial_connection.is_open:
             try:
-                _serial_connection = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.5)
-                time.sleep(2)  # Initial Arduino boot only
-                print(f"Serial connected to {SERIAL_PORT}")
+                _serial_connection = serial.Serial(
+                    SERIAL_PORT,
+                    BAUD_RATE,
+                    timeout=1          # 1-second per readline — loop handles total timeout
+                )
+                time.sleep(2)          # wait for Arduino boot / reset
+                print(f"Serial connected to {SERIAL_PORT} @ {BAUD_RATE} baud")
             except Exception as e:
-                print(f"Serial error: {e}")
+                print(f"Serial open error: {e}")
+                _serial_connection = None
                 return None
         return _serial_connection
 
@@ -59,15 +154,24 @@ def cleanup_serial():
         
 atexit.register(cleanup_serial)
 
+# views.py - Replace your existing get_next_fingerprint_id()
+
 def get_next_fingerprint_id():
-    """Get the next available fingerprint ID (1-127)"""
-    # Get all used fingerprint IDs
-    used_ids = set(Patient.objects.filter(
+    """Get the next available fingerprint ID (1-127) for BOTH patients and staff"""
+    # Get all used fingerprint IDs from BOTH models
+    patient_ids = set(Patient.objects.filter(
         fingerprint_id__isnull=False
-    ).values_list('fingerprint_id', flat=True))
+    ).exclude(fingerprint_id='').values_list('fingerprint_id', flat=True))
+    
+    staff_ids = set(HCStaff.objects.filter(
+        fingerprint_id__isnull=False
+    ).exclude(fingerprint_id='').values_list('fingerprint_id', flat=True))
+    
+    # Combine used IDs
+    used_ids = patient_ids | staff_ids  # Union of both sets
     
     # Find first available ID
-    for i in range(1, 128):
+    for i in range(1, 999):
         if str(i) not in used_ids:
             return str(i)
     
@@ -76,32 +180,19 @@ def get_next_fingerprint_id():
 @api_view(['POST'])
 def start_fingerprint_scan(request):
     global IS_SCANNING
-
     ser = get_serial()
     if ser is None:
         return Response({"error": "Arduino connection error"}, status=503)
-
     try:
         with _serial_lock:
-
-            # If already scanning, DO NOT send SCAN again
             if IS_SCANNING:
-                return Response({
-                    "status": "scanning",
-                    "message": "Already scanning"
-                })
-
-            # Clear buffer and send SCAN only once
+                return Response({"status": "scanning", "message": "Already scanning"})
             ser.reset_input_buffer()
             ser.write(b"SCAN\n")
             ser.flush()
             IS_SCANNING = True
-
-        return Response({
-            "status": "scanning",
-            "message": "Place finger on sensor"
-        })
-
+            _claim_serial()   # ← add this
+        return Response({"status": "scanning", "message": "Place finger on sensor"})
     except Exception as e:
         return Response({"error": str(e)}, status=503)
 
@@ -159,156 +250,264 @@ def check_fingerprint_match(request):
 @api_view(['POST'])
 def stop_fingerprint_scan(request):
     global IS_SCANNING
-
     ser = get_serial()
-    if ser is None:
-        return Response({"error": "Arduino connection error"}, status=503)
 
-    try:
-        with _serial_lock:
+    # Always drop scanning state and release serial
+    IS_SCANNING = False
+    _release_serial()
 
-            if IS_SCANNING:
+    if ser:
+        try:
+            with _serial_lock:
                 ser.write(b"STOP\n")
                 ser.flush()
+        except Exception as e:
+            pass
 
-            IS_SCANNING = False
-
-        return Response({"status": "stopped"})
-
-    except Exception as e:
-        return Response({"error": str(e)}, status=503)
-
+    return Response({"status": "stopped"})
+# Add this new Event specifically for enrollment — stronger than _serial_busy
 @api_view(['POST'])
 def start_fingerprint_enrollment(request):
-    """Start fingerprint enrollment process"""
     patient_id = request.data.get('patient_id')
-    
+
     if not patient_id:
-        return Response(
-            {"error": "patient_id is required"}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
+        return Response({"error": "patient_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         patient = Patient.objects.get(patient_id=patient_id)
-        
+
         if patient.fingerprint_id:
             return Response(
-                {"error": f"Patient already has fingerprint ID {patient.fingerprint_id}"}, 
+                {"error": f"Patient already has fingerprint ID {patient.fingerprint_id}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         fingerprint_id = get_next_fingerprint_id()
-        
         if not fingerprint_id:
-            return Response(
-                {"error": "No available fingerprint slots"}, 
-                status=status.HTTP_507_INSUFFICIENT_STORAGE
-            )
-        
-        ser = get_serial() 
+            return Response({"error": "No available fingerprint slots"}, status=status.HTTP_507_INSUFFICIENT_STORAGE)
+
+        ser = get_serial()
         if ser is None:
-            return Response(
-                {"error": "Arduino connection error"}, 
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-        
+            return Response({"error": "Arduino connection error"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        _claim_serial()
+        _enrollment_active.set()  # ← STOP the monitor thread from reading
+
         try:
             with _serial_lock:
                 ser.reset_input_buffer()
-                command = f"E:{fingerprint_id}\n"
-                ser.write(command.encode())
+                ser.write(f"E:{fingerprint_id}\n".encode())
                 ser.flush()
-            
+
             return Response({
                 "status": "started",
                 "fingerprint_id": fingerprint_id,
                 "patient_id": patient_id,
                 "message": "Enrollment started"
             })
-                
+
         except Exception as e:
-            return Response(
-                {"error": f"Communication error: {str(e)}"}, 
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-        
+            _enrollment_active.clear()
+            _release_serial()
+            return Response({"error": f"Communication error: {str(e)}"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
     except Patient.DoesNotExist:
-        return Response(
-            {"error": "Patient not found"}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
+
 
 @api_view(['GET'])
 def check_enrollment_status(request):
-    """Poll Arduino for enrollment status updates"""
+    global _pending_btn_next
     fingerprint_id = request.query_params.get('fingerprint_id')
     patient_id = request.query_params.get('patient_id')
-   
+
     if not fingerprint_id or not patient_id:
-        return Response(
-            {"error": "fingerprint_id and patient_id are required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-   
+        return Response({"error": "fingerprint_id and patient_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
     ser = get_serial()
     if ser is None:
-        return Response(
-            {"error": "Arduino connection error"},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-   
+        _enrollment_active.clear()
+        _release_serial()
+        return Response({"error": "Arduino connection error"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
     try:
         with _serial_lock:
-            # Check if there's data waiting
-            if ser.in_waiting > 0:
-                line = ser.readline().decode('utf-8').strip()
-               
-                if line:
-                    try:
-                        data = json.loads(line)
-                       
-                        # If enrollment successful, save to database
-                        if data.get('status') == 'enrolled':
-                            try:
-                                patient = Patient.objects.get(patient_id=patient_id)
-                                patient.fingerprint_id = fingerprint_id
-                                patient.save()
-                               
-                                return Response({
-                                    "status": "enrolled",
-                                    "fingerprint_id": fingerprint_id,
-                                    "message": "Fingerprint enrolled and saved to database"
-                                })
-                            except Patient.DoesNotExist:
-                                return Response(
-                                    {"error": "Patient not found"},
-                                    status=status.HTTP_404_NOT_FOUND
-                                )
-                       
-                        # Return current status from Arduino
-                        return Response(data)
-                       
-                    except json.JSONDecodeError:
-                        # Return the raw message if not JSON
-                        return Response({
-                            "status": "waiting",
-                            "message": line
-                        })
-           
-            # No data available yet
-            return Response({
-                "status": "waiting",
-                "message": "No update from sensor"
-            })
-               
-    except Exception as e:
-        print(f"Error reading status: {e}")
-        return Response(
-            {"error": f"Error: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+            last_data = None
+            time.sleep(0.05)
 
+            while ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                if not line:
+                    continue
+                try:
+                    parsed = json.loads(line)
+                    
+                    if parsed.get('status') == 'btn_next':
+                        with _pending_btn_lock:
+                            _pending_btn_next = True
+                        print("[Enrollment] Button pressed! Queuing next patient after enrollment.")
+                        continue
+
+                    last_data = parsed
+                    
+                    if parsed.get('status') in ('enrolled', 'error', 'cancelled'):
+                        break
+                except json.JSONDecodeError:
+                    continue        
+
+            if last_data is None:
+                return Response({"status": "waiting", "message": "No update from sensor"})
+
+            data = last_data
+
+            if data.get('status') == 'enrolled':
+                try:
+                    patient = Patient.objects.get(patient_id=patient_id)
+                    patient.fingerprint_id = fingerprint_id
+                    patient.save()
+                except Patient.DoesNotExist:
+                    pass
+                _enrollment_active.clear()  
+                _release_serial()
+                return Response({
+                    "status": "enrolled",
+                    "fingerprint_id": fingerprint_id,
+                    "message": "Fingerprint enrolled and saved"
+                })
+
+            if data.get('status') in ('error', 'cancelled'):
+                _enrollment_active.clear()  
+                _release_serial()
+                return Response(data)
+
+            return Response(data) 
+
+    except Exception as e:
+        _enrollment_active.clear()
+        _release_serial()
+        return Response({"error": f"Error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+# Do the same for staff enrollment
+@api_view(['POST'])
+def start_staff_fingerprint_enrollment(request):
+    staff_id = request.data.get('staff_id')
+
+    if not staff_id:
+        return Response({"error": "staff_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        staff = HCStaff.objects.get(staff_id=staff_id)
+
+        if staff.fingerprint_id:
+            return Response(
+                {"error": f"Staff member already has fingerprint ID {staff.fingerprint_id}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        fingerprint_id = get_next_fingerprint_id()
+        if not fingerprint_id:
+            return Response({"error": "No available fingerprint slots."}, status=status.HTTP_507_INSUFFICIENT_STORAGE)
+
+        ser = get_serial()
+        if ser is None:
+            return Response({"error": "Arduino fingerprint sensor connection error"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        _claim_serial()
+        _enrollment_active.set()  # ← STOP the monitor thread
+
+        try:
+            with _serial_lock:
+                ser.reset_input_buffer()
+                ser.write(f"E:{fingerprint_id}\n".encode())
+                ser.flush()
+
+            return Response({
+                "status": "started",
+                "fingerprint_id": fingerprint_id,
+                "staff_id": staff_id,
+                "message": "Staff enrollment started"
+            })
+
+        except Exception as e:
+            _enrollment_active.clear()
+            _release_serial()
+            return Response({"error": f"Communication error: {str(e)}"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    except HCStaff.DoesNotExist:
+        return Response({"error": "Staff member not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+def check_staff_enrollment_status(request):
+    global _pending_btn_next
+    fingerprint_id = request.query_params.get('fingerprint_id')
+    staff_id = request.query_params.get('staff_id')
+
+    if not fingerprint_id or not staff_id:
+        return Response({"error": "fingerprint_id and staff_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    ser = get_serial()
+    if ser is None:
+        _enrollment_active.clear()
+        _release_serial()
+        return Response({"error": "Fingerprint sensor connection error"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    try:
+        with _serial_lock:
+            last_data = None
+            time.sleep(0.05)
+
+            while ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                if not line:
+                    continue
+                try:
+                    parsed = json.loads(line)
+                    
+                    if parsed.get('status') == 'btn_next':
+                        with _pending_btn_lock:
+                            _pending_btn_next = True
+                        print("[Enrollment] Button pressed! Queuing next patient after enrollment.")
+                        continue
+
+                    last_data = parsed
+                    if parsed.get('status') in ('enrolled', 'error', 'cancelled'):
+                        break
+                except json.JSONDecodeError:
+                    continue
+
+            if last_data is None:
+                return Response({"status": "waiting", "message": "Waiting for fingerprint sensor..."})
+
+            data = last_data
+
+            if data.get('status') == 'enrolled':
+                try:
+                    staff = HCStaff.objects.get(staff_id=staff_id)
+                    staff.fingerprint_id = fingerprint_id
+                    staff.save()
+                except HCStaff.DoesNotExist:
+                    pass
+                _enrollment_active.clear()  
+                _release_serial()
+                return Response({
+                    "status": "enrolled",
+                    "fingerprint_id": fingerprint_id,
+                    "message": "Staff fingerprint enrolled successfully"
+                })
+
+            if data.get('status') in ('error', 'cancelled'):
+                _enrollment_active.clear()  
+                _release_serial()
+                return Response(data)
+
+            return Response(data)
+
+    except Exception as e:
+        _enrollment_active.clear()
+        _release_serial()
+        return Response({"error": f"Error reading enrollment status: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 @api_view(['DELETE'])
 def delete_fingerprint(request, patient_id):
     """
@@ -366,87 +565,106 @@ latest_vitals = {
 
 
 @api_view(['POST'])
-def start_vitals(request):
-    """Trigger Arduino to measure temperature, heart rate, SpO2, height"""
+def cancel_vitals(request):
     ser = get_serial()
     if ser is None:
         return Response({"error": "Arduino connection error"}, status=500)
-    
     try:
-        print("📡 Sending START command...")
-        
         with _serial_lock:
-            # Clear buffers
+            ser.write(b'FLUSH\n')
+            ser.flush()
+        time.sleep(2)  # give Arduino time to abort ← increase from 0.5
+        with _serial_lock:
             ser.reset_input_buffer()
             ser.reset_output_buffer()
+        return Response({"status": "flushed"})
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
-            # Send command
-            ser.write(b'START\n')
+@api_view(['POST'])
+def start_vitals(request):
+    import traceback
+
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Arduino connection error"}, status=500)
+
+    try:
+        print("📡 Sending START command...")
+
+        with _serial_lock:
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            ser.write(b'start\n')
             ser.flush()
 
-            # Wait for response (up to 6 seconds)
-            print("⏳ Waiting for Arduino data...")
-            start_time = time.time()
-            line = ""
-            
-            while (time.time() - start_time) < 15:
-                if ser.in_waiting:
-                    line = ser.readline().decode(errors='ignore').strip()
-                    if line:
-                        break
+        # Let Arduino process the command, then flush anything that drifted in
+        time.sleep(1)
+        with _serial_lock:
+            ser.reset_input_buffer()
+
+        print("⏳ Waiting for Arduino JSON response (60s cycle)...")
+
+        VITAL_KEYS = {"temperature", "heart_rate", "spo2", "height", "weight"}
+        deadline   = time.time() + 75
+        data       = None
+
+        while time.time() < deadline:
+            try:
+                with _serial_lock:
+                    ser.timeout = 2
+                    raw = ser.readline()
+            except Exception as read_err:
+                print(f"readline error: {read_err}")
                 time.sleep(0.1)
+                continue
 
-        print("Raw serial data:", repr(line))
+            line = raw.decode(errors='ignore').strip()
 
-        if not line:
-            return Response({"error": "No data received from Arduino"}, status=500)
+            if not line:
+                time.sleep(0.05)
+                continue
 
-        # Parse JSON
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
-            return Response({"error": f"Invalid JSON: {line}"}, status=500)
+            print(f"Arduino → {repr(line)}")
 
-        # Update global vitals cache
+            if line.startswith('{'):
+                try:
+                    parsed = json.loads(line)
+
+                    if 'debug' in parsed:
+                        print(f"[DEBUG] {parsed}")
+                        continue
+
+                    if VITAL_KEYS & set(parsed.keys()):
+                        if parsed.get('heart_rate', 0) == 0 and parsed.get('spo2', 0) == 0:
+                            print(f"⚠️ Skipping zero vitals (stale): {parsed}")
+                            continue
+
+                        data = parsed
+                        break
+
+                except json.JSONDecodeError as je:
+                    print(f"JSON error: {je} | raw: {repr(line)}")
+
+        if data is None:
+            return Response(
+                {"error": "Timeout — no vitals JSON from Arduino after 75s."},
+                status=500,
+            )
+
         latest_vitals.update({
             "temperature": data.get("temperature"),
-            "heart_rate": data.get("heart_rate"),
-            "spo2": data.get("spo2"),
-            "height": data.get("height"),
-            "weight": data.get("weight")
+            "heart_rate":  data.get("heart_rate"),
+            "spo2":        data.get("spo2"),
+            "height":      data.get("height"),
+            "weight":      data.get("weight"),
         })
 
-        print("Vitals received:", latest_vitals)
+        print("✅ Vitals received:", latest_vitals)
         return Response(latest_vitals)
 
     except Exception as e:
-        print("Error reading vitals:", e)
-        return Response({"error": str(e)}, status=500)
-
-@api_view(['GET'])
-def fetch_temperature(request):
-    """Fetch latest temperature from Arduino"""
-    ser = get_serial()
-    if ser is None:
-        return Response({"error": "Connection error"}, status=500)
-    
-    try:
-        with _serial_lock:
-            if ser.in_waiting > 0:
-                line = ser.readline().decode('utf-8', errors='ignore').strip()
-                if line:
-                    try:
-                        data = json.loads(line)
-                        temperature = data.get("temperature")
-                        if temperature is not None:
-                            latest_vitals["temperature"] = float(temperature)
-                            print(f"🌡️ Temperature: {temperature}°C")
-                            return Response({"temperature": temperature})
-                    except json.JSONDecodeError:
-                        pass
-            
-            return Response({"error": "No data available"}, status=404)
-    except Exception as e:
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
 
@@ -647,12 +865,9 @@ def update_vitals(request, id):
 
 @api_view(['POST'])
 def receive_vital_signs(request):
-    """
-    Handles vital sign data (weight, height, heart_rate, etc.)
-    Updates existing record for today if incomplete, or creates new one.
-    """
     data = request.data
     patient_id = data.get('patient_id')
+    vital_id   = data.get('id')  # None on first step, set on subsequent steps
 
     if not patient_id:
         return Response({"error": "Missing patient_id"}, status=status.HTTP_400_BAD_REQUEST)
@@ -662,54 +877,25 @@ def receive_vital_signs(request):
     except Patient.DoesNotExist:
         return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    # Try to find an existing record by ID (sent by frontend)
+    # Try to find the existing row for this session
     vital_signs = None
+    if vital_id:
+        vital_signs = VitalSigns.objects.filter(
+            vitals_id=vital_id, patient=patient
+        ).first()
 
+    # First step of this session — always create a brand new row
+    if vital_signs is None:
+        vital_signs = VitalSigns.objects.create(patient=patient)
 
-    # If no ID given, find today's incomplete record
-    if not vital_signs:
-        today = timezone.now().date()
-        today_start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time()))
-        today_end = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.max.time()))
-
-        vital_signs = (
-            VitalSigns.objects.filter(
-                patient=patient,
-                date_time_recorded__range=(today_start, today_end)
-            )
-            .order_by('-date_time_recorded')
-            .first()
-        )
-
-        # If we found one but it's already complete, reset so we can create a new one
-        if vital_signs:
-            all_filled = all([
-                vital_signs.weight is not None,
-                vital_signs.height is not None,
-                vital_signs.heart_rate is not None,
-                vital_signs.temperature is not None,
-                vital_signs.oxygen_saturation is not None,
-                vital_signs.blood_pressure is not None,
-            ])
-            if all_filled:
-                vital_signs = None
-
-    # If still none, create a fresh record
-    if not vital_signs:
-        vital_signs = VitalSigns.objects.create(
-            patient=patient,
-        )
-
-    # --- Map frontend key names to model field names ---
     field_map = {
-        'heart_rate': 'heart_rate',
-        'heart_rate': 'heart_rate',           # frontend may send heart_rate
-        'temperature': 'temperature',
-        'spo2': 'oxygen_saturation',           # frontend may send spo2
+        'heart_rate':        'heart_rate',
+        'temperature':       'temperature',
+        'spo2':              'oxygen_saturation',
         'oxygen_saturation': 'oxygen_saturation',
-        'weight': 'weight',
-        'height': 'height',
-        'blood_pressure': 'blood_pressure',
+        'weight':            'weight',
+        'height':            'height',
+        'blood_pressure':    'blood_pressure',
     }
 
     for frontend_key, model_field in field_map.items():
@@ -718,17 +904,17 @@ def receive_vital_signs(request):
 
     vital_signs.save()
 
+    # Only queue the patient once ALL 6 fields are present on this row
     all_vitals_complete = all([
-        vital_signs.blood_pressure is not None,
-        vital_signs.heart_rate is not None,
-        vital_signs.temperature is not None,
+        vital_signs.blood_pressure    is not None,
+        vital_signs.heart_rate        is not None,
+        vital_signs.temperature       is not None,
         vital_signs.oxygen_saturation is not None,
-        vital_signs.weight is not None,
-        vital_signs.height is not None,
+        vital_signs.weight            is not None,
+        vital_signs.height            is not None,
     ])
 
     if all_vitals_complete:
-        # Check if patient is already in queue TODAY with active status
         today = timezone.now().date()
         existing_queue = QueueEntry.objects.filter(
             patient=patient,
@@ -737,31 +923,31 @@ def receive_vital_signs(request):
         ).first()
 
         if not existing_queue:
-            # Compute priority based on vitals
             priority = compute_patient_priority(patient)
-
-            # Add to queue
-            QueueEntry.objects.create(
+            new_entry = QueueEntry.objects.create(
                 patient=patient,
                 priority_status=priority,
                 entered_at=timezone.now()
             )
+        # ── Clear the session vital ID so the next patient starts a fresh row ──
+        # This prevents the next patient from accidentally appending to this row.
+        if 'current_vital_id' in request.session:
+            del request.session['current_vital_id']
 
     return Response({
         "message": "Vital signs saved successfully",
         "data": {
-            "id": vital_signs.vitals_id,
-            "patient_id": patient.patient_id,
-            "heart_rate": vital_signs.heart_rate,
-            "temperature": vital_signs.temperature,
+            "id":                vital_signs.vitals_id,
+            "patient_id":        patient.patient_id,
+            "heart_rate":        vital_signs.heart_rate,
+            "temperature":       vital_signs.temperature,
             "oxygen_saturation": vital_signs.oxygen_saturation,
-            "weight": vital_signs.weight,
-            "height": vital_signs.height,
-            "blood_pressure": vital_signs.blood_pressure,
-            "timestamp": vital_signs.date_time_recorded,
+            "weight":            vital_signs.weight,
+            "height":            vital_signs.height,
+            "blood_pressure":    vital_signs.blood_pressure,
+            "timestamp":         vital_signs.date_time_recorded,
         },
     }, status=status.HTTP_200_OK)
-
 
     
 @api_view(['GET'])
@@ -865,133 +1051,135 @@ def get_patient_profile(request):
     except Patient.DoesNotExist:
         return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
     
+def _is_complete(vital):
+    return all([
+        vital.blood_pressure    is not None,
+        vital.heart_rate        is not None,
+        vital.temperature       is not None,
+        vital.oxygen_saturation is not None,
+        vital.weight            is not None,
+        vital.height            is not None,
+    ])
+
+
 @api_view(['GET'])
 def get_patient_vitals(request):
-    """Get current logged-in patient's vitals history"""
-    user_type = request.session.get('user_type')
-    
-    if user_type != 'patient':
+    if request.session.get('user_type') != 'patient':
         return Response({"error": "Not authenticated as patient"}, status=status.HTTP_401_UNAUTHORIZED)
-    
+
     patient_id = request.session.get('patient_id')
-    
+
     try:
         patient = Patient.objects.get(patient_id=patient_id)
-        
-        # Get all vitals for this patient, ordered by most recent first
-        vitals_queryset = VitalSigns.objects.filter(patient=patient).order_by('-date_time_recorded')
-        
-        # Get latest vitals (most recent)
-        latest_vital = vitals_queryset.first()
-        
-        latest_data = None
-        if latest_vital:
-            # Calculate BMI if height and weight exist
-            bmi_value = None
-            if latest_vital.height and latest_vital.weight:
-                height_m = latest_vital.height / 100  # Convert cm to meters
-                bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
-            
-            latest_data = {
-                'heart_rate': latest_vital.heart_rate,
-                'temperature': latest_vital.temperature,
-                'spo2': latest_vital.oxygen_saturation,
-                'blood_pressure': latest_vital.blood_pressure,  # Add blood pressure fields to your model if needed
-                'height': latest_vital.height,
-                'weight': latest_vital.weight,
-                'bmi': bmi_value
-            }
-        
-        # Get history (all records)
-        history_data = []
-        for vital in vitals_queryset:
-            history_data.append({
-                'id': vital.vitals_id,
-                'date': vital.date_time_recorded.strftime('%Y-%m-%d %H:%M'),
-                'heart_rate': vital.heart_rate,
-                'blood_pressure': vital.blood_pressure,  # Add blood pressure fields to your model if needed
-                'temperature': vital.temperature,
-                'spo2': vital.oxygen_saturation,
-                'height': vital.height,
-                'weight': vital.weight,
-                'bmi': vital.bmi
-            })
-        
-        return Response({
-            'latest': latest_data,
-            'history': history_data
-        })
-        
-    except Patient.DoesNotExist:
-        return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
-    
-@api_view(['GET'])
-def get_vitals(request):
-   # Add auth check if needed (e.g., permission_classes = [IsAuthenticated])
-    patients = VitalSigns.objects.all()
-    serializer = VitalSignsSerializer(patients, many=True)
-    return Response(serializer.data)
 
-@api_view(['GET'])
-def get_patient_vitals_by_id(request, patient_id): # <-- NEW FUNCTION
-    """Get a patient's vitals history using patient_id (for staff view)"""
-    try:
-        # 1. Use the provided patient_id to find the Patient object
-        patient = Patient.objects.get(patient_id=patient_id)
-        
-        # 2. Get all vitals for this patient, ordered by most recent first
-        vitals_queryset = VitalSigns.objects.filter(patient=patient).order_by('-vitals_id')
-        
-        latest_vital = vitals_queryset.first()
-        latest_data = None
-        
-        if latest_vital:
-            # Calculate BMI if height and weight exist
-            bmi_value = None
-            if latest_vital.height and latest_vital.weight:
-                height_m = latest_vital.height / 100
-                bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
-            
-            # Map latest vitals data
-            latest_data = {
-                'heart_rate': latest_vital.heart_rate,
-                'temperature': latest_vital.temperature,
-                'spo2': latest_vital.oxygen_saturation,
-                'blood_pressure': latest_vital.blood_pressure, # ADDED: Ensure BP is included
-                'height': latest_vital.height,
-                'weight': latest_vital.weight,
-                'bmi': bmi_value
-            }
-        
-        # 3. Get history (all records)
-        history_data = []
-        for vital in vitals_queryset:
-            bmi_value = None
-            if vital.height and vital.weight:
-                height_m = vital.height / 100
-                bmi_value = round(vital.weight / (height_m * height_m), 1)
+        # Get ALL vitals ordered by most recent, filter to complete only
+        all_vitals = VitalSigns.objects.filter(
+            patient=patient
+        ).order_by('-date_time_recorded')
 
-            history_data.append({
-                'id': vital.vitals_id,
-                'date': vital.date_time_recorded.strftime('%Y-%m-%d %H:%M'), 
-                'heart_rate': vital.heart_rate,
-                'blood_pressure': vital.blood_pressure,
-                'temperature': vital.temperature,
-                'spo2': vital.oxygen_saturation,
-                'height': vital.height,
-                'weight': vital.weight,
-                'bmi': bmi_value 
-            })
-        
+        complete = [v for v in all_vitals if _is_complete(v)]
+
+        # No complete sessions yet
+        if not complete:
+            return Response({'latest': None, 'history': []})
+
+        # index 0 = latest, index 1 onwards = history
+        # These are explicitly split so latest never appears in history
+        latest_vital   = complete[0]
+        history_vitals = complete[1:]  # ← slicing the COMPLETE list, not the raw queryset
+
+        def build_row(v):
+            height_m  = v.height / 100
+            bmi_value = round(v.weight / (height_m * height_m), 1)
+            return {
+                'id':             v.vitals_id,
+                'date':           v.date_time_recorded.strftime('%Y-%m-%d %H:%M'),
+                'heart_rate':     v.heart_rate,
+                'blood_pressure': v.blood_pressure,
+                'temperature':    v.temperature,
+                'spo2':           v.oxygen_saturation,
+                'height':         v.height,
+                'weight':         v.weight,
+                'bmi':            bmi_value,
+            }
+
+        height_m  = latest_vital.height / 100
+        bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
+
+        latest_data = {
+            'id':             latest_vital.vitals_id,
+            'heart_rate':     latest_vital.heart_rate,
+            'temperature':    latest_vital.temperature,
+            'spo2':           latest_vital.oxygen_saturation,
+            'blood_pressure': latest_vital.blood_pressure,
+            'height':         latest_vital.height,
+            'weight':         latest_vital.weight,
+            'bmi':            bmi_value,
+        }
+
         return Response({
-            'latest': latest_data,
-            'history': history_data
+            'latest':  latest_data,
+            'history': [build_row(v) for v in history_vitals],
         })
-        
+
     except Patient.DoesNotExist:
         return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
 
-# Remove the DUPLICATE QueueViewSet class and keep only this one:
+
+@api_view(['GET'])
+def get_patient_vitals_by_id(request, patient_id):
+    try:
+        patient = Patient.objects.get(patient_id=patient_id)
+
+        all_vitals = VitalSigns.objects.filter(
+            patient=patient
+        ).order_by('-date_time_recorded')
+
+        complete = [v for v in all_vitals if _is_complete(v)]
+
+        if not complete:
+            return Response({'latest': None, 'history': []})
+
+        latest_vital   = complete[0]
+        history_vitals = complete[1:]
+
+        def build_row(v):
+            height_m  = v.height / 100
+            bmi_value = round(v.weight / (height_m * height_m), 1)
+            return {
+                'id':             v.vitals_id,
+                'date':           v.date_time_recorded.strftime('%Y-%m-%d %H:%M'),
+                'heart_rate':     v.heart_rate,
+                'blood_pressure': v.blood_pressure,
+                'temperature':    v.temperature,
+                'spo2':           v.oxygen_saturation,
+                'height':         v.height,
+                'weight':         v.weight,
+                'bmi':            bmi_value,
+            }
+
+        height_m  = latest_vital.height / 100
+        bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
+
+        latest_data = {
+            'id':             latest_vital.vitals_id,
+            'heart_rate':     latest_vital.heart_rate,
+            'temperature':    latest_vital.temperature,
+            'spo2':           latest_vital.oxygen_saturation,
+            'blood_pressure': latest_vital.blood_pressure,
+            'height':         latest_vital.height,
+            'weight':         latest_vital.weight,
+            'bmi':            bmi_value,
+        }
+
+        return Response({
+            'latest':  latest_data,
+            'history': [build_row(v) for v in history_vitals],
+        })
+
+    except Patient.DoesNotExist:
+        return Response({"error": "Patient not found"}, status=status.HTTP_404_NOT_FOUND)
+    
 class QueueViewSet(viewsets.ModelViewSet):
     queryset = QueueEntry.objects.all()
     serializer_class = QueueEntrySerializer
@@ -999,104 +1187,98 @@ class QueueViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def current_queue(self, request):
-        """Get sorted queue: Only WAITING patients, prioritized by priority level, then entered_at."""
-        queue = QueueEntry.objects.filter(
-            status='WAITING'  # Only show waiting patients
-        ).select_related('patient').annotate(
-            priority_order=Case(
-                When(priority_status='CRITICAL', then=1),
-                When(priority_status='HIGH', then=2),
-                When(priority_status='MEDIUM', then=3),
-                default=4,
-                output_field=IntegerField()
+        queue = (
+            QueueEntry.objects
+            .filter(status__in=['WAITING', 'SERVING'])
+            .select_related('patient')
+            .annotate(
+                status_order=Case(
+                    When(status='SERVING', then=0),
+                    default=1,
+                    output_field=IntegerField(),
+                ),
+                priority_order=Case(
+                    When(priority_status='CRITICAL', then=1),
+                    When(priority_status='HIGH',     then=2),
+                    When(priority_status='MEDIUM',   then=3),
+                    default=4,
+                    output_field=IntegerField(),
+                ),
             )
-        ).order_by('priority_order', 'entered_at')
-        
+            .order_by('status_order', 'priority_order', 'entered_at')
+        )
         serializer = self.get_serializer(queue, many=True)
         return Response(serializer.data)
-    
+
     @action(detail=False, methods=['get'])
     def all_today(self, request):
-        """Get all queue entries for today (including completed)"""
-        from django.utils import timezone
         today = timezone.now().date()
-        
         queue = QueueEntry.objects.filter(
             entered_at__date=today
         ).select_related('patient').order_by('-entered_at')
-        
         serializer = self.get_serializer(queue, many=True)
         return Response(serializer.data)
-    
+
     @action(detail=False, methods=['get'])
     def completed_today(self, request):
-        """Get completed queue entries for today"""
-        from django.utils import timezone
         today = timezone.now().date()
-        
         queue = QueueEntry.objects.filter(
             status='COMPLETED',
             entered_at__date=today
         ).select_related('patient').order_by('-served_at')
-        
         serializer = self.get_serializer(queue, many=True)
         return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def mark_complete(self, request, pk=None):
-        """Mark a queue entry as complete/served"""
-        try:
-            queue_entry = self.get_object()
-            queue_entry.mark_completed()  # Use the model method
-            return Response({
-                "message": "Patient marked as served",
-                "queue_number": queue_entry.queue_number,
-                "served_at": queue_entry.served_at
-            }, status=status.HTTP_200_OK)
-        except QueueEntry.DoesNotExist:
-            return Response(
-                {"error": "Queue entry not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-    
+
     @action(detail=True, methods=['post'])
     def mark_serving(self, request, pk=None):
-        """Mark a queue entry as currently being served"""
         try:
-            queue_entry = self.get_object()
-            queue_entry.mark_serving()
+            close_old_connections()
+            QueueEntry.objects.filter(status='SERVING').update(
+                status='COMPLETED',
+                served_at=timezone.now()
+            )
+            QueueEntry.objects.filter(pk=pk).update(status='SERVING')
+            queue_entry = QueueEntry.objects.get(pk=pk)
             return Response({
                 "message": "Patient marked as being served",
-                "queue_number": queue_entry.queue_number
+                "queue_number": str(queue_entry.queue_number).zfill(3)
             }, status=status.HTTP_200_OK)
-        except QueueEntry.DoesNotExist:
-            return Response(
-                {"error": "Queue entry not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-    
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'])
+    def mark_complete(self, request, pk=None):
+        try:
+            queue_entry = self.get_object()
+            queue_entry.status = 'COMPLETED'
+            queue_entry.served_at = timezone.now()
+            queue_entry.save()
+            return Response({"message": "Patient marked as served"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
-        """Cancel a queue entry"""
         try:
             queue_entry = self.get_object()
             queue_entry.status = 'CANCELLED'
             queue_entry.save()
-            return Response({
-                "message": "Queue entry cancelled",
-                "queue_number": queue_entry.queue_number
-            }, status=status.HTTP_200_OK)
-        except QueueEntry.DoesNotExist:
-            return Response(
-                {"error": "Queue entry not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"message": "Queue entry cancelled"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
 @api_view(['POST'])
 def logout(request):
     """Clear session"""
     request.session.flush()
     return Response({"message": "Logged out successfully"})
+
+@api_view(['GET'])
+def get_vitals(request):
+   # Add auth check if needed (e.g., permission_classes = [IsAuthenticated])
+    patients = VitalSigns.objects.all()
+    serializer = VitalSignsSerializer(patients, many=True)
+    return Response(serializer.data)
 
 @api_view(['GET'])
 def get_all_patients(request):
@@ -1791,118 +1973,32 @@ please proceed to the clinic area.
 
 @api_view(['POST'])
 def update_queue_display(request):
-    """
-    Send the current queue number to the seven-segment display
-    Call this whenever the queue updates
-    """
+    queue_number = request.data.get('queue_number', 0)
+
+    if _serial_busy.is_set():
+        # Serial is busy — save the number, it will be sent on next _release_serial()
+        global _pending_queue_number
+        with _pending_queue_lock:
+            _pending_queue_number = queue_number
+        return Response({"message": "deferred", "queue_number": queue_number}, status=200)
+
     ser = get_serial()
     if ser is None:
-        return Response({"error": "Display connection error"}, status=500)
-    
-    try:
-        # Get the current serving queue number
-        queue_entry = QueueEntry.objects.filter(
-            status='SERVING'
-        ).first()
-        
-        if not queue_entry:
-            # If no one is being served, get the next waiting patient
-            queue_entry = QueueEntry.objects.filter(
-                status='WAITING'
-            ).order_by('priority_order', 'entered_at').first()
-        
-        queue_number = queue_entry.queue_number if queue_entry else 0
-        
-        # Send to Arduino
-        with _serial_lock:
-            command = f"{queue_number}\n"
-            ser.write(command.encode())
-            ser.flush()
-        
-        return Response({
-            "message": "Display updated",
-            "queue_number": queue_number
-        }, status=200)
-        
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
-
-
-@api_view(['GET'])
-def get_current_queue_for_display(request):
-    """
-    Get current queue number being served (for frontend to call)
-    """
-    try:
-        # Get currently serving patient
-        queue_entry = QueueEntry.objects.filter(
-            status='SERVING'
-        ).first()
-        
-        if not queue_entry:
-            # Get next waiting patient
-            queue_entry = QueueEntry.objects.filter(
-                status='WAITING'
-            ).annotate(
-                priority_order=Case(
-                    When(priority_status='CRITICAL', then=1),
-                    When(priority_status='HIGH', then=2),
-                    When(priority_status='MEDIUM', then=3),
-                    default=4,
-                    output_field=IntegerField()
-                )
-            ).order_by('priority_order', 'entered_at').first()
-        
-        queue_number = queue_entry.queue_number if queue_entry else 0
-        
-        return Response({
-            "queue_number": queue_number,
-            "patient_name": f"{queue_entry.patient.first_name} {queue_entry.patient.last_name}" if queue_entry else None,
-            "status": queue_entry.status if queue_entry else "EMPTY"
-        }, status=200)
-        
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
-
-
-@api_view(['POST'])
-def update_queue_display(request):
-    """Send current queue number to the 7-segment display via Q: prefix"""
-    ser = get_serial()  # reuse the same single connection
-    if ser is None:
         return Response({"error": "Arduino connection error"}, status=500)
-    
+
     try:
-        queue_entry = QueueEntry.objects.filter(status='SERVING').first()
-        
-        if not queue_entry:
-            queue_entry = QueueEntry.objects.filter(
-                status='WAITING'
-            ).annotate(
-                priority_order=Case(
-                    When(priority_status='CRITICAL', then=1),
-                    When(priority_status='HIGH', then=2),
-                    When(priority_status='MEDIUM', then=3),
-                    default=4,
-                    output_field=IntegerField()
-                )
-            ).order_by('priority_order', 'entered_at').first()
-        
-        queue_number = queue_entry.queue_number if queue_entry else 0
-        
         with _serial_lock:
             ser.write(f"Q:{queue_number}\n".encode())
             ser.flush()
-            print(f"Sent to display: Q:{queue_number}")
-        
-        return Response({
-            "message": "Display updated",
-            "queue_number": queue_number
-        }, status=200)
-        
+            print(f"[display] Sent: Q:{queue_number}")
+
+        return Response({"message": "Display updated", "queue_number": queue_number}, status=200)
+
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-    
+
+
+
 MASTER_PIN = '1111'
 
 @csrf_exempt
@@ -1924,3 +2020,927 @@ def verify_pin(request):
             return JsonResponse({'error': 'Invalid data format'}, status=400)
 
     return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+# Add these imports at the top if not already present
+import json
+import threading
+from django.db import transaction
+
+# Add these staff fingerprint views to your views.py
+# STAFF FINGERPRINT VIEWS - For HCStaff/Employee Management
+# These are SEPARATE from patient fingerprint views
+# All endpoints prefixed with /staff/fingerprint/
+
+@api_view(['POST'])
+def start_staff_fingerprint_enrollment(request):
+    """Start STAFF fingerprint enrollment"""
+    staff_id = request.data.get('staff_id')
+
+    if not staff_id:
+        return Response(
+            {"error": "staff_id is required for staff enrollment"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        staff = HCStaff.objects.get(staff_id=staff_id)
+
+        if staff.fingerprint_id:
+            return Response(
+                {"error": f"Staff member already has fingerprint ID {staff.fingerprint_id}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        fingerprint_id = get_next_fingerprint_id()
+
+        if not fingerprint_id:
+            return Response(
+                {"error": "No available fingerprint slots."},
+                status=status.HTTP_507_INSUFFICIENT_STORAGE
+            )
+
+        ser = get_serial()
+        if ser is None:
+            return Response(
+                {"error": "Arduino fingerprint sensor connection error"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        _claim_serial()   # held until check_staff_enrollment_status releases it
+
+        try:
+            with _serial_lock:
+                ser.reset_input_buffer()
+                ser.write(f"E:{fingerprint_id}\n".encode())
+                ser.flush()
+
+            return Response({
+                "status": "started",
+                "fingerprint_id": fingerprint_id,
+                "staff_id": staff_id,
+                "message": "Staff enrollment started - place finger on sensor"
+            })
+
+        except Exception as e:
+            _release_serial()
+            return Response(
+                {"error": f"Fingerprint sensor communication error: {str(e)}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+    except HCStaff.DoesNotExist:
+        return Response(
+            {"error": "Staff member not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+def check_staff_enrollment_status(request):
+    """Check STAFF fingerprint enrollment status"""
+    fingerprint_id = request.query_params.get('fingerprint_id')
+    staff_id = request.query_params.get('staff_id')
+
+    if not fingerprint_id or not staff_id:
+        return Response(
+            {"error": "fingerprint_id and staff_id are required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    ser = get_serial()
+    if ser is None:
+        _release_serial()
+        return Response(
+            {"error": "Fingerprint sensor connection error"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    try:
+        with _serial_lock:
+            if ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8').strip()
+
+                if line:
+                    try:
+                        data = json.loads(line)
+
+                        if data.get('status') == 'enrolled':
+                            try:
+                                staff = HCStaff.objects.get(staff_id=staff_id)
+                                staff.fingerprint_id = fingerprint_id
+                                staff.save()
+                            except HCStaff.DoesNotExist:
+                                pass
+                            _release_serial()   # enrollment done — release
+                            return Response({
+                                "status": "enrolled",
+                                "fingerprint_id": fingerprint_id,
+                                "message": "Staff fingerprint enrolled successfully"
+                            })
+
+                        if data.get('status') == 'error':
+                            _release_serial()   # enrollment failed — release
+                            return Response(data)
+
+                        return Response(data)   # still in progress, stay claimed
+
+                    except json.JSONDecodeError:
+                        return Response({
+                            "status": "waiting",
+                            "message": line
+                        })
+
+        return Response({
+            "status": "waiting",
+            "message": "Waiting for fingerprint sensor..."
+        })
+
+    except Exception as e:
+        _release_serial()
+        return Response(
+            {"error": f"Error reading enrollment status: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['DELETE'])
+def delete_staff_fingerprint(request, staff_id):
+    """
+    Delete STAFF fingerprint from sensor and database
+    Endpoint: DELETE /staff/fingerprint/delete/<staff_id>/
+    """
+    try:
+        # Get HCStaff record - NOT Patient
+        staff = HCStaff.objects.get(staff_id=staff_id)
+        
+        if not staff.fingerprint_id:
+            return Response(
+                {"error": "Staff member has no fingerprint enrolled"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        fingerprint_id = staff.fingerprint_id
+        
+        # Delete from Arduino fingerprint sensor
+        try:
+            with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
+                time.sleep(2)
+                command = f"DELETE:{fingerprint_id}\n"
+                ser.write(command.encode())
+                time.sleep(1)
+                if ser.in_waiting:
+                    response = ser.readline().decode('utf-8').strip()
+        
+        except serial.SerialException as e:
+            pass  # Continue even if sensor delete fails
+        
+        # Delete from HCStaff database record
+        staff.fingerprint_id = None
+        staff.save()
+        
+        return Response({
+            "message": f"Staff fingerprint {fingerprint_id} deleted successfully",
+            "staff_id": staff_id
+        })
+        
+    except HCStaff.DoesNotExist:
+        return Response(
+            {"error": "Staff member not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['POST'])
+def verify_staff_fingerprint(request):
+    """
+    Verify STAFF fingerprint for login/authentication
+    Returns staff member info if fingerprint matches
+    Endpoint: POST /staff/fingerprint/verify/
+    """
+    user_id = request.data.get("user_id")  # fingerprint_id from sensor
+    score = request.data.get("score")      # match confidence score
+
+    if not user_id:
+        return Response({"error": "Missing user_id (fingerprint_id)"}, status=400)
+
+    try:
+        # Find HCStaff by fingerprint_id - NOT Patient
+        staff = HCStaff.objects.get(fingerprint_id=user_id)
+        
+        return Response({
+            "status": "success",
+            "user_type": "staff",           # Explicitly staff
+            "staff_id": staff.staff_id,     # staff_id NOT patient_id
+            "username": staff.username,
+            "name": f"{staff.first_name} {staff.last_name}",
+            "position": staff.position,
+            "department": staff.department,
+            "score": score
+        }, status=200)
+        
+    except HCStaff.DoesNotExist:
+        return Response(
+            {"error": f"No staff member found with fingerprint_id {user_id}"}, 
+            status=404
+        )
+    
+@api_view(['GET'])
+def check_patient_fingerprint_match(request):
+    global IS_SCANNING, _pending_btn_next
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Arduino connection error"}, status=503)
+
+    response_data = None
+    should_stop = False
+
+    try:
+        with _serial_lock:
+            if scan_start_times["patient"] is None:
+                scan_start_times["patient"] = time.time()
+
+            if time.time() - scan_start_times["patient"] > SCAN_TIMEOUT:
+                scan_start_times["patient"] = None
+                IS_SCANNING = False
+                should_stop = True
+                response_data = {
+                    "status": "error",
+                    "error_type": "UNKNOWN_FINGERPRINT",
+                    "message": "Fingerprint scan timed out"
+                }
+
+            else:
+                last_data = None
+                time.sleep(0.05) 
+                
+                # --- FAST BUFFER DRAIN ---
+                while ser.in_waiting > 0:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if not line:
+                        continue
+                        
+                    # 1. ALWAYS catch the button instantly
+                    if '"btn_next"' in line or 'btn_next' in line:
+                        with _pending_btn_lock:
+                            _pending_btn_next = True
+                        print("\n[Fingerprint] Button pressed! Queuing next patient after 5 sec wait.")
+                        continue
+                        
+                    try:
+                        if '}{' in line:
+                            line = '{' + line.split('}{')[-1]
+                            
+                        data = json.loads(line)
+                        
+                        if data.get("status") != "btn_next":
+                            last_data = data
+                            
+                        # Only break if it is the TRUE final message sent after 5 seconds
+                        if data.get("status") in ("found", "not_found", "error", "cancelled"):
+                            break
+                            
+                    except json.JSONDecodeError:
+                        continue
+                # -------------------------
+
+                if last_data is None:
+                    msg = "Button queued! Please wait..." if _pending_btn_next else "Waiting for finger..."
+                    return Response({"status": "scanning", "message": msg})
+
+                arduino_status = last_data.get("status", "")
+
+                # During the 5 second wait, Arduino sends "remove_finger"
+                if arduino_status in ("scanning", "place_finger", "remove_finger"):
+                    msg = "Button queued! Please wait..." if _pending_btn_next else last_data.get("message", "")
+                    return Response({"status": arduino_status, "message": msg})
+
+                elif arduino_status == "not_found":
+                    scan_start_times["patient"] = None
+                    IS_SCANNING = False
+                    should_stop = True
+                    response_data = {
+                        "status": "error",
+                        "error_type": "UNKNOWN_FINGERPRINT",
+                        "message": "Fingerprint not registered"
+                    }
+
+                elif arduino_status == "found":
+                    fingerprint_id = str(last_data.get("id"))
+                    patient = Patient.objects.filter(fingerprint_id=fingerprint_id).first()
+
+                    if patient:
+                        scan_start_times["patient"] = None
+                        IS_SCANNING = False
+                        should_stop = True
+                        request.session["user_type"] = "patient"
+                        request.session["patient_id"] = patient.patient_id
+                        patient.last_visit = timezone.now()
+                        patient.save()
+                        response_data = {
+                            "status": "success",
+                            "user_type": "patient",
+                            "patient_id": patient.patient_id,
+                            "name": f"{patient.first_name} {patient.last_name}",
+                            "confidence": last_data.get("confidence", 0)
+                        }
+                    else:
+                        staff = HCStaff.objects.filter(fingerprint_id=fingerprint_id).first()
+                        if staff:
+                            scan_start_times["patient"] = None
+                            IS_SCANNING = False
+                            should_stop = True
+                            response_data = {
+                                "status": "error",
+                                "error_type": "WRONG_ROLE",
+                                "found_role": "staff",
+                                "staff_name": f"{staff.first_name} {staff.last_name}",
+                                "message": "This fingerprint belongs to Staff. Use Staff Login."
+                            }
+                        else:
+                            scan_start_times["patient"] = None
+                            IS_SCANNING = False
+                            should_stop = True
+                            response_data = {
+                                "status": "error",
+                                "error_type": "UNKNOWN_FINGERPRINT",
+                                "message": "Fingerprint not registered"
+                            }
+                else:
+                    return Response(last_data)
+
+        if should_stop:
+            try:
+                with _serial_lock:
+                    ser.write(b"STOP\n")
+                    ser.flush()
+            except Exception:
+                pass
+            finally:
+                # This naturally executes your queued button press the instant the 5 seconds are up!
+                _release_serial()
+
+        return Response(response_data)
+
+    except Exception as e:
+        scan_start_times["patient"] = None
+        IS_SCANNING = False
+        try:
+            with _serial_lock:
+                ser.write(b"STOP\n")
+                ser.flush()
+        except Exception:
+            pass
+        finally:
+            _release_serial() 
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def check_staff_fingerprint_match(request):
+    global IS_SCANNING, _pending_btn_next
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Arduino connection error"}, status=503)
+
+    response_data = None
+    should_stop = False
+
+    try:
+        with _serial_lock:
+            if scan_start_times["staff"] is None:
+                scan_start_times["staff"] = time.time()
+
+            if time.time() - scan_start_times["staff"] > SCAN_TIMEOUT:
+                scan_start_times["staff"] = None
+                IS_SCANNING = False
+                should_stop = True
+                response_data = {
+                    "status": "error",
+                    "error_type": "UNKNOWN_FINGERPRINT",
+                    "message": "Fingerprint scan timed out"
+                }
+
+            else:
+                last_data = None
+                time.sleep(0.05)
+                
+                while ser.in_waiting > 0:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if not line:
+                        continue
+                        
+                    if '"btn_next"' in line or 'btn_next' in line:
+                        with _pending_btn_lock:
+                            _pending_btn_next = True
+                        print("\n[Fingerprint] Button pressed! Queuing next patient after 5 sec wait.")
+                        continue
+                            
+                    try:
+                        if '}{' in line:
+                            line = '{' + line.split('}{')[-1]
+                            
+                        data = json.loads(line)
+                        
+                        if data.get("status") != "btn_next":
+                            last_data = data
+                            
+                        if data.get("status") in ("found", "not_found", "error", "cancelled"):
+                            break
+                            
+                    except json.JSONDecodeError:
+                        continue
+
+                if last_data is None:
+                    msg = "Button queued! Please wait..." if _pending_btn_next else "Waiting for finger..."
+                    return Response({"status": "scanning", "message": msg})
+
+                arduino_status = last_data.get("status", "")
+
+                if arduino_status in ("scanning", "place_finger", "remove_finger"):
+                    msg = "Button queued! Please wait..." if _pending_btn_next else last_data.get("message", "")
+                    return Response({"status": arduino_status, "message": msg})
+
+                elif arduino_status == "not_found":
+                    scan_start_times["staff"] = None
+                    IS_SCANNING = False
+                    should_stop = True
+                    response_data = {
+                        "status": "error",
+                        "error_type": "UNKNOWN_FINGERPRINT",
+                        "message": "Fingerprint not registered"
+                    }
+
+                elif arduino_status == "found":
+                    fingerprint_id = str(last_data.get("id"))
+                    staff = HCStaff.objects.filter(fingerprint_id=fingerprint_id).first()
+
+                    if staff:
+                        scan_start_times["staff"] = None
+                        IS_SCANNING = False
+                        should_stop = True
+                        request.session["user_id"] = staff.staff_id
+                        request.session["user_type"] = "staff"
+                        request.session["first_name"] = staff.first_name
+                        response_data = {
+                            "status": "success",
+                            "user_type": "staff",
+                            "staff_id": staff.staff_id,
+                            "username": staff.username,
+                            "name": f"{staff.first_name} {staff.last_name}",
+                            "confidence": last_data.get("confidence", 0)
+                        }
+                    else:
+                        patient = Patient.objects.filter(fingerprint_id=fingerprint_id).first()
+                        if patient:
+                            scan_start_times["staff"] = None
+                            IS_SCANNING = False
+                            should_stop = True
+                            response_data = {
+                                "status": "error",
+                                "error_type": "WRONG_ROLE",
+                                "found_role": "patient",
+                                "patient_name": f"{patient.first_name} {patient.last_name}",
+                                "message": "This fingerprint belongs to a Patient. Use Patient Login."
+                            }
+                        else:
+                            scan_start_times["staff"] = None
+                            IS_SCANNING = False
+                            should_stop = True
+                            response_data = {
+                                "status": "error",
+                                "error_type": "UNKNOWN_FINGERPRINT",
+                                "message": "Fingerprint not registered"
+                            }
+                else:
+                    return Response(last_data)
+
+        if should_stop:
+            try:
+                with _serial_lock:
+                    ser.write(b"STOP\n")
+                    ser.flush()
+            except Exception:
+                pass
+            finally:
+                # This naturally executes your queued button press the instant the 5 seconds are up!
+                _release_serial()
+
+        return Response(response_data)
+
+    except Exception as e:
+        scan_start_times["staff"] = None
+        IS_SCANNING = False
+        try:
+            with _serial_lock:
+                ser.write(b"STOP\n")
+                ser.flush()
+        except Exception:
+            pass
+        finally:
+            _release_serial()
+        return Response({"error": str(e)}, status=500)
+    
+@api_view(['POST'])
+def stop_fingerprint_enrollment(request):
+    """Called when user clicks Cancel Enrollment in React"""
+    ser = get_serial()
+    
+    # Always clear the enrollment lock
+    _enrollment_active.clear()
+    _release_serial()
+
+    if ser:
+        try:
+            with _serial_lock:
+                ser.write(b'FLUSH\n')
+                ser.flush()
+        except Exception:
+            pass
+
+    return Response({"status": "stopped"})
+# ── REPLACE the entire _read_single_vital function and all 4 measure_ views ──
+# in your views.py with this block
+
+def _read_single_vital(command: bytes, expected_keys, timeout: int = 15):
+    if isinstance(expected_keys, str):
+        expected_keys = [expected_keys]
+
+    _claim_serial()
+
+    ser = get_serial()
+    if ser is None:
+        _release_serial()
+        return None, "Arduino connection error"
+
+    try:
+        with _serial_lock:
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            ser.write(command)
+            ser.flush()
+
+        time.sleep(0.2)
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            try:
+                with _serial_lock:
+                    ser.timeout = 2
+                    raw = ser.readline()
+            except Exception:
+                time.sleep(0.1)
+                continue
+
+            line = raw.decode(errors='ignore').strip()
+            if not line:
+                continue
+
+            print(f"Arduino → {repr(line)}")
+
+            if line.startswith('{'):
+                try:
+                    parsed = json.loads(line)
+                    if 'debug' in parsed:
+                        continue
+
+                    # ---- NEW: Catch button press during Vitals ----
+                    if parsed.get('status') == 'btn_next':
+                        global _pending_btn_next
+                        with _pending_btn_lock:
+                            _pending_btn_next = True
+                        print("[Vitals] Button pressed! Queuing next patient after vitals finish.")
+                        continue  # Keep waiting for the actual vital signs
+                    # -----------------------------------------------
+
+                    if all(k in parsed for k in expected_keys):
+                        return parsed, None
+                except json.JSONDecodeError:
+                    pass
+
+        return None, (
+            f"Timeout — Arduino did not return {expected_keys} within {timeout}s"
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return None, str(e)
+
+    finally:
+        _release_serial()
+
+@api_view(['POST'])
+def measure_weight(request):
+    data, err = _read_single_vital(b'WEIGHT\n', 'weight', timeout=12)
+    if err:
+        return Response({"error": err}, status=500)
+    weight = data.get('weight', 0)
+    latest_vitals['weight'] = weight
+    return Response({"weight": weight})
+
+
+@api_view(['POST'])
+def measure_height(request):
+    try:
+        data, err = _read_single_vital(b'HEIGHT\n', 'height', timeout=10)
+        if err:
+            return Response({"error": err}, status=500)
+        height = data.get('height', 0)
+        latest_vitals['height'] = height
+        return Response({"height": height})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['POST'])
+def measure_pulse(request):
+    """
+    Sends : PULSE
+    Expects: {"heart_rate": X, "spo2": X}  — both keys in ONE JSON line
+
+    Arduino runs all 4 phases (60 s total) then prints one combined JSON.
+    Pulse.jsx calls this single endpoint and reads back both values at once.
+    Timeout is 75 s = 60 s Arduino cycle + 15 s safety margin.
+    """
+    data, err = _read_single_vital(
+        b'PULSE\n',
+        ['heart_rate', 'spo2'],   # wait until both keys arrive together
+        timeout=75
+    )
+    if err:
+        return Response({"error": err}, status=500)
+
+    hr   = data.get('heart_rate', 0)
+    spo2 = data.get('spo2', 0)
+
+    latest_vitals['heart_rate'] = hr
+    latest_vitals['spo2']       = spo2
+
+    # Return both — Pulse.jsx reads: const heartRate = data.heart_rate
+    #                                const oxygenSaturation = data.spo2
+    return Response({"heart_rate": hr, "spo2": spo2})
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# In views.py, DELETE both of these functions:
+#   - fetch_temperature   (the @api_view(['GET']) one)
+#   - measure_temperature (the @api_view(['POST']) one)
+#
+# Then paste this single combined replacement in their place.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+def measure_temperature(request):
+    if request.method == 'GET':
+        cached = latest_vitals.get('temperature')
+        if cached is not None:
+            return Response({"temperature": cached})
+        return Response({"error": "No temperature reading available yet."}, status=404)
+
+    try:
+        data, err = _read_single_vital(b'TEMP\n', 'temperature', timeout=12)  # ← 8 → 12
+        if err:
+            print(f"[measure_temperature] error: {err}")
+            return Response({"error": err}, status=500)
+
+        temp = round(float(data.get('temperature', 0)), 1)
+        latest_vitals['temperature'] = temp
+        print(f"[measure_temperature] ✅ temp={temp}")
+        return Response({"temperature": temp})
+
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return Response({"error": str(exc)}, status=500)
+    
+# Global flag for hardware button
+_btn_next_pressed = False
+
+
+
+
+BTN_NEXT_DEBOUNCE = 3.0  # seconds
+
+# ==============================================================================
+# CORE QUEUE & HARDWARE LOGIC (Unbreakable Sequence)
+# ==============================================================================
+from django.db import transaction, close_old_connections
+import time
+
+# ==============================================================================
+# CORE QUEUE & HARDWARE LOGIC (Strict Database Slaving & Polite Queuing)
+# ==============================================================================
+# ==============================================================================
+# CORE QUEUE & HARDWARE LOGIC (DIRECT SQL OVERRIDE - NO LOCK COLLISIONS)
+# ==============================================================================
+# views.py
+
+_btn_next_lock = threading.RLock()
+_last_btn_next_time = 0
+# views.py additions/replacements
+
+_advance_lock = threading.Lock()
+_last_advance_time = 0
+
+def _advance_queue_on_button():
+    """Event-triggered database update. NO TIMERS."""
+    try:
+        close_old_connections()
+        with transaction.atomic():
+            # 1. Complete whoever is CURRENTLY serving
+            QueueEntry.objects.filter(status='SERVING').update(
+                status='COMPLETED', 
+                served_at=timezone.now()
+            )
+            
+            # 2. Find the highest priority WAITING patient
+            next_patient = QueueEntry.objects.filter(status='WAITING').annotate(
+                p_order=Case(
+                    When(priority_status='CRITICAL', then=1),
+                    When(priority_status='HIGH', then=2),
+                    When(priority_status='MEDIUM', then=3),
+                    default=4, output_field=IntegerField()
+                )
+            ).order_by('p_order', 'entered_at').first()
+
+            display_num = "000"
+            if next_patient:
+                next_patient.status = 'SERVING'
+                next_patient.save()
+                display_num = str(next_patient.queue_number).zfill(3)
+
+        # 3. Send to Arduino display
+        ser = get_serial()
+        if ser:
+            with _serial_lock:
+                ser.write(f"Q:{display_num}\n".encode())
+                ser.flush()
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error advancing queue: {e}")
+        return False
+
+@api_view(['POST'])
+def trigger_next_button(request):
+    """Manual UI trigger from the Tablet"""
+    if _advance_queue_on_button():
+        _btn_next_event.set()
+        return Response({"status": "success"})
+        
+    return Response({"status": "error", "message": "Failed to advance queue"}, status=500)
+
+
+
+@api_view(['GET'])
+def get_current_queue_for_display(request):
+    """Source of truth for the frontend 'Now Serving' card."""
+
+    # Prefer the patient who is actively SERVING
+    entry = QueueEntry.objects.filter(status='SERVING').first()
+
+    if entry:
+        return Response({
+            "queue_number": str(entry.queue_number).zfill(3),
+            "patient_name": f"{entry.patient.first_name} {entry.patient.last_name}",
+            "status": "SERVING",
+        })
+
+    # Nothing serving yet — show the next-up WAITING patient as a preview
+    next_waiting = (
+        QueueEntry.objects
+        .filter(status='WAITING')
+        .annotate(
+            priority_order=Case(
+                When(priority_status='CRITICAL', then=1),
+                When(priority_status='HIGH',     then=2),
+                When(priority_status='MEDIUM',   then=3),
+                default=4,
+                output_field=IntegerField(),
+            )
+        )
+        .order_by('priority_order', 'entered_at')
+        .first()
+    )
+
+    if next_waiting:
+        return Response({
+            "queue_number": str(next_waiting.queue_number).zfill(3),
+            "patient_name": f"{next_waiting.patient.first_name} {next_waiting.patient.last_name}",
+            "status": "WAITING",
+        })
+
+    return Response({"queue_number": "000", "patient_name": None, "status": "EMPTY"})
+
+@api_view(['GET'])
+def check_next_button(request):
+    """React polls this to refresh UI when hardware button is pressed."""
+    if _btn_next_event.is_set():
+        _btn_next_event.clear()
+        return Response({"pressed": True, "sensor_busy": False})
+    
+    busy = _serial_busy.is_set() or _enrollment_active.is_set() or IS_SCANNING
+    return Response({"pressed": False, "sensor_busy": busy})
+
+
+
+
+def _push_current_queue_to_display():
+    """Called by _release_serial() after every sensor session to restore screen."""
+    try:
+        entry = QueueEntry.objects.filter(status='SERVING').first()
+
+        if not entry:
+            entry = (
+                QueueEntry.objects
+                .filter(status='WAITING')
+                .annotate(
+                    priority_order=Case(
+                        When(priority_status='CRITICAL', then=1),
+                        When(priority_status='HIGH',     then=2),
+                        When(priority_status='MEDIUM',   then=3),
+                        default=4,
+                        output_field=IntegerField(),
+                    )
+                )
+                .order_by('priority_order', 'entered_at')
+                .first()
+            )
+
+        queue_number = str(entry.queue_number).zfill(3) if entry else "000"
+
+        ser = get_serial()
+        if ser:
+            with _serial_lock:
+                ser.write(f"Q:{queue_number}\n".encode())
+                ser.flush()
+
+    except Exception as e:
+        print(f"[queue display] error in _push_current_queue_to_display: {e}")
+
+def _hardware_event_listener():
+    """
+    Event-Driven Serial Listener with Yielding.
+    Uses a 0.5s timeout so it can check for locks and get out of the way 
+    when you try to scan a fingerprint or take vitals.
+    """
+    global IS_SCANNING, _btn_next_event
+    
+    while True:
+        try:
+            # Yield if the sensor is locked for vitals/enrollment
+            if _serial_busy.is_set() or _enrollment_active.is_set() or IS_SCANNING:
+                time.sleep(0.2)
+                continue
+
+            ser = get_serial()
+            if ser is None:
+                time.sleep(2)
+                continue
+
+            # ==========================================
+            # SAFE BLOCKING I/O - TIMEOUT ALLOWS YIELDING
+            # ==========================================
+            # Instead of None (infinite wait), use 0.5s. 
+            # This allows the thread to wake up, check if you clicked "Enroll", 
+            # and step away BEFORE stealing the Arduino's enrollment data.
+            ser.timeout = 0.5  
+            
+            try:
+                raw_line = ser.readline() 
+            except Exception:
+                continue
+                
+            if not raw_line:
+                continue # No data came in, loop around and check locks again
+
+            line = raw_line.decode('utf-8', errors='ignore').strip()
+            
+            if line:
+                try:
+                    data = json.loads(line)
+                    if data.get('status') == 'btn_next':
+                        print("\n[EVENT] Hardware Button Fired!")
+                        
+                        # Process the Queue
+                        if _advance_queue_on_button():
+                            _btn_next_event.set()
+
+                        # Destroy the electrical 'bounce'
+                        with _serial_lock:
+                            ser.reset_input_buffer()
+                            ser.reset_output_buffer()
+                            
+                except json.JSONDecodeError:
+                    pass
+
+        except Exception as e:
+            print(f"Hardware Event Error: {e}")
+            time.sleep(1)
+
+# Start the Event Listener Thread
+_event_thread = threading.Thread(target=_hardware_event_listener, daemon=True)
+_event_thread.start()

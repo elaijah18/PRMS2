@@ -8,6 +8,7 @@ import fingerPrint from '../assets/fingerprint-sensor.png'
 import showPinIcon from '../assets/show.png'
 import hidePinIcon from '../assets/hide.png'
 import Popup from '../components/ErrorPopup'
+import RetryButton from '../components/RetryButton' 
 
 const months = [
   'January','February','March','April','May','June',
@@ -20,16 +21,13 @@ export default function Register() {
   const [popupMsg, setPopupMsg] = useState('')
   const [errors, setErrors] = useState({})
 
-  // Name fields
   const [first_name, setFirstName] = useState('')
   const [middle_name, setMiddleName] = useState('')
   const [last_name, setLastName] = useState('')
 
-  // Demographics
   const [sex, setSex] = useState('')
   const [phone, setPhone] = useState('')
 
-  // Address
   const [address, setAddress] = useState({
     street: '',
     barangay: '',
@@ -38,17 +36,14 @@ export default function Register() {
     country: 'Philippines'
   })
 
-  // Birthdate
   const [month, setMonth] = useState('')
   const [day, setDay] = useState('')
   const [year, setYear] = useState('')
 
-  // Account
   const [username, setUsername] = useState('')
   const [pin, setPin] = useState('')
   const [showPin, setShowPin] = useState(false)
 
-  // Fingerprint enrollment state
   const [fpStatus, setFpStatus] = useState('idle')
   const [fpMessage, setFpMessage] = useState('')
   const [fpProgress, setFpProgress] = useState(0)
@@ -83,7 +78,6 @@ export default function Register() {
     return `${year}-${m}-${d}`
   }, [month, day, year])
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (enrollmentTimer) {
@@ -92,7 +86,6 @@ export default function Register() {
     }
   }, [enrollmentTimer])
 
-  // Auto-redirect when enrollment completes
   useEffect(() => {
     if (fpStatus === 'enrolled' && registeredPatientId) {
       setTimeout(() => {
@@ -102,13 +95,20 @@ export default function Register() {
     }
   }, [fpStatus, registeredPatientId, nav])
 
-  // Start fingerprint enrollment with silent auto-retry
   const startAutomaticEnrollment = async (patientId, currentRetry = 0) => {
     setRetryCount(currentRetry)
+
+    if (currentRetry >= 3) {
+      setFpStatus('error')
+      setFpMessage('Sensor connection lost or timed out.')
+      setFpProgress(0)
+      return
+    }
+
     setFpStatus('enrolling')
-    setFpMessage('Starting fingerprint enrollment...')
+    setFpMessage(currentRetry > 0 ? `Retrying enrollment... (Attempt ${currentRetry})` : 'Starting fingerprint enrollment...')
     setFpProgress(10)
-   
+    
     try {
       const response = await fetch('http://localhost:8000/fingerprint/enroll/', {
         method: 'POST',
@@ -116,34 +116,26 @@ export default function Register() {
         credentials: 'include',
         body: JSON.stringify({ patient_id: patientId })
       })
-     
+      
       if (!response.ok) {
-        // Silent retry on network error
-        const nextRetry = currentRetry + 1
-        setFpMessage(`Retrying enrollment... (Attempt ${nextRetry + 1})`)
-        setFpProgress(5)
-        
-        setTimeout(() => {
-          startAutomaticEnrollment(patientId, nextRetry)
-        }, 1500)
+        setTimeout(() => startAutomaticEnrollment(patientId, currentRetry + 1), 1500)
         return
       }
-     
+      
       const data = await response.json()
       setEnrollmentFingerprintId(data.fingerprint_id)
       setFpMessage('Place your finger on the sensor')
-     
-      // Poll for enrollment status
+      
       const timer = setInterval(async () => {
         try {
           const statusRes = await fetch(
             `http://localhost:8000/fingerprint/status/?fingerprint_id=${data.fingerprint_id}&patient_id=${patientId}`,
             { credentials: 'include' }
           )
-         
+          
           const statusData = await statusRes.json()
-         
-          // Update based on Arduino status
+          
+          // --- 2-PHASE UI LOGIC RESTORED ---
           if (statusData.status === 'place_finger') {
             if (statusData.step === 1) {
               setFpMessage('Place your finger on the sensor')
@@ -163,50 +155,45 @@ export default function Register() {
             setFpMessage('Fingerprint enrolled successfully!')
             setPopupMsg('Registration complete! Redirecting...')
           } else if (statusData.status === 'error') {
-            // Clear timer and silently retry
             clearInterval(timer)
             setEnrollmentTimer(null)
-            
-            const nextRetry = currentRetry + 1
-            setFpMessage(`Retrying enrollment... (Attempt ${nextRetry + 1})`)
-            setFpProgress(10)
-            
-            // Wait 1.5 seconds before retrying
-            setTimeout(() => {
-              startAutomaticEnrollment(patientId, nextRetry)
-            }, 1500)
+            setTimeout(() => startAutomaticEnrollment(patientId, currentRetry + 1), 1500)
           }
           
-          // Update message if provided
-          if (statusData.message && statusData.status !== 'error') {
+          // Ignore empty polling messages so instructions don't disappear
+          if (
+            statusData.message && 
+            statusData.status !== 'error' && 
+            statusData.message !== 'No update from sensor' &&
+            statusData.message !== 'Waiting for fingerprint sensor...'
+          ) {
             setFpMessage(statusData.message)
           }
         } catch (err) {
           console.error('Error checking enrollment status:', err)
-          // Continue polling even on error
         }
       }, 1000)
-     
-      setEnrollmentTimer(timer)
-     
-    } catch (err) {
-      // Retry on network/server errors silently
-      const nextRetry = currentRetry + 1
-      setFpMessage(`Retrying enrollment... (Attempt ${nextRetry + 1})`)
-      setFpProgress(5)
       
-      setTimeout(() => {
-        startAutomaticEnrollment(patientId, nextRetry)
-      }, 1500)
+      setEnrollmentTimer(timer)
+      
+    } catch (err) {
+      setTimeout(() => startAutomaticEnrollment(patientId, currentRetry + 1), 1500)
     }
   }
 
-  // Cancel enrollment and go back
   const cancelEnrollment = () => {
     if (enrollmentTimer) {
       clearInterval(enrollmentTimer)
       setEnrollmentTimer(null)
     }
+
+    // Use the dedicated enrollment stop endpoint
+    fetch('http://localhost:8000/fingerprint/enroll/stop/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    }).catch(console.error)
+
     setFpStatus('cancelled')
     setFpMessage('Enrollment cancelled')
     setCreating(false)
@@ -216,7 +203,6 @@ export default function Register() {
     }, 2000)
   }
 
-  // Capitalize first letter of each word
   const capitalizeWords = (str) => {
     return str
       .trim()
@@ -230,7 +216,6 @@ export default function Register() {
     setPressedKeys(new Set([keyForPressState]))
     setTimeout(() => setPressedKeys(new Set()), 120)
 
-    // Prevent numbers in name fields
     const isNameField = ['first_name', 'middle_name', 'last_name'].includes(focusedField)
     if (/^[0-9]$/.test(key) && isNameField) {
       setFieldInvalidChar(focusedField, true, 'Only letters allowed')
@@ -240,7 +225,6 @@ export default function Register() {
       return
     }
 
-    // Allow letters, numbers (except in name fields), and space
     if (/^[A-Za-z]$/.test(key) || (/^[0-9]$/.test(key) && !isNameField)) {
       if (focusedField === 'first_name') {
         setFirstName(v => v + key)
@@ -301,7 +285,6 @@ export default function Register() {
       return
     }
 
-    // Forbidden punctuation/special characters
     if (key && key.length === 1) {
       if (focusedField) {
         const activeField = focusedField
@@ -404,7 +387,6 @@ export default function Register() {
     }
 
     setErrors({})
-
     setCreating(true)
 
     const patientProfile = {
@@ -421,7 +403,6 @@ export default function Register() {
     }
 
     try {
-      // 1. Register patient
       const registerRes = await fetch('http://localhost:8000/patients/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -437,7 +418,6 @@ export default function Register() {
         return
       }
 
-      // 2. Auto-login
       const loginRes = await fetch('http://localhost:8000/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -462,11 +442,10 @@ export default function Register() {
       if (loginData.patient_id) {
         sessionStorage.setItem('patient_id', loginData.patient_id)
         setRegisteredPatientId(loginData.patient_id)
-       
-        // 3. Start fingerprint enrollment
+        
         setPopupMsg('Account created! Now enrolling fingerprint...')
-        await startAutomaticEnrollment(loginData.patient_id)
-       
+        await startAutomaticEnrollment(loginData.patient_id, 0)
+        
       } else {
         console.warn("Login successful but no patient_id found in response payload.")
         setCreating(false)
@@ -837,8 +816,7 @@ export default function Register() {
                 <button
                   type="button"
                   onClick={() => nav('/patient-login')}
-                  className="mt-6 px-8 py-3 rounded-xl border-2 border-gray-300 text-[#426F66] font-medium
-                            hover:bg-gray-50 transition-colors"
+                  className="mt-6 px-8 py-3 rounded-xl border-2 border-gray-300 text-[#426F66] font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
@@ -847,25 +825,23 @@ export default function Register() {
                   disabled={creating}
                   className="mt-6 bg-[#6ec1af] hover:bg-emerald-800/70 disabled:opacity-60 text-white font-bold px-8 py-3 rounded-xl shadow-md transition-colors"
                 >
-                  {creating ? (fpStatus === 'enrolling' ? 'Enrolling Fingerprint...' : 'Creating Account...') : 'Register'}
+                  {creating ? (fpStatus === 'enrolling' ? 'Enrolling...' : 'Creating Account...') : 'Register'}
                 </button>
               </div>
             </div>
           </div>
 
           {/* Biometric Status Card */}
-          <aside className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6">
+          <aside className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6 flex flex-col">
             <h3 className="text-lg font-extrabold text-emerald-800">Biometric Enrollment</h3>
             <p className="mt-1 text-sm text-emerald-900/80">
               Fingerprint enrollment required
             </p>
           
             <div className="mt-5 grid place-items-center">
-              <div className="h-32 w-32 rounded-full bg-white border-2 border-emerald-300 grid place-items-center overflow-hidden relative">
+              <div className={`h-32 w-32 rounded-full border-2 grid place-items-center overflow-hidden relative ${fpStatus === 'error' ? 'border-red-400 bg-red-50' : 'border-emerald-300 bg-white'}`}>
                 {fpStatus === 'idle' && (
-                  <div className="text-emerald-700/80 text-sm text-center px-2">
-                    Ready
-                  </div>
+                  <div className="text-emerald-700/80 text-sm text-center px-2">Ready</div>
                 )}
                 
                 {fpStatus === 'enrolling' && (
@@ -890,10 +866,13 @@ export default function Register() {
                 {fpStatus === 'enrolled' && (
                   <div className="text-emerald-600 text-4xl">✓</div>
                 )}
+
+                {fpStatus === 'error' && (
+                  <div className="text-red-500 font-bold text-5xl">!</div>
+                )}
               </div>
             </div>
           
-            {/* Progress Bar */}
             {fpStatus === 'enrolling' && (
               <div className="mt-4 w-full h-2 rounded-full bg-slate-200 overflow-hidden">
                 <div 
@@ -909,50 +888,68 @@ export default function Register() {
                 <span className={`font-semibold ${
                   fpStatus === 'enrolled' ? 'text-emerald-700' :
                   fpStatus === 'enrolling' ? 'text-blue-600' :
+                  fpStatus === 'error' ? 'text-red-600' :
                   fpStatus === 'cancelled' ? 'text-orange-600' :
                   'text-slate-600'
                 }`}>
                   {fpStatus === 'idle' && 'Not enrolled'}
                   {fpStatus === 'enrolling' && 'Capturing…'}
                   {fpStatus === 'enrolled' && 'Enrolled'}
+                  {fpStatus === 'error' && 'Error'}
                   {fpStatus === 'cancelled' && 'Cancelled'}
                 </span>
               </p>
               {fpMessage && (
-                <p className="text-xs text-emerald-800 mt-2">{fpMessage}</p>
+                <p className={`text-xs mt-2 font-medium ${fpStatus === 'error' ? 'text-red-600' : 'text-emerald-800'}`}>
+                  {fpMessage}
+                </p>
               )}
             </div>
           
-            <div className="mt-5">
+            <div className="mt-auto pt-5">
               {fpStatus === 'enrolling' && (
                 <div>
                   <div className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-blue-800 text-sm mb-3">
                     Follow the sensor prompts carefully
                     {retryCount > 0 && (
-                      <div className="mt-2 text-xs text-blue-600">
-                        Retry attempt: {retryCount + 1}
+                      <div className="mt-2 text-xs font-semibold text-blue-600">
+                        Retry attempt: {retryCount} / 3
                       </div>
                     )}
                   </div>
                   <button
                     onClick={cancelEnrollment}
-                    className="w-full bg-red-500 hover:bg-red-600 text-white text-sm py-2 rounded-lg transition-colors"
+                    className="w-full bg-red-500 hover:bg-red-600 text-white text-sm py-2 rounded-lg transition-colors shadow-sm"
                   >
                     Cancel Enrollment
                   </button>
                 </div>
               )}
+
+              {fpStatus === 'error' && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col items-center justify-center gap-3">
+                    <RetryButton onClick={() => startAutomaticEnrollment(registeredPatientId, 0)} />
+                    <button
+                      onClick={cancelEnrollment}
+                      className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-sm py-2 rounded-lg transition-colors"
+                    >
+                      Skip for now
+                    </button>
+                  </div>
+                </div>
+              )}
             
               {fpStatus === 'enrolled' && (
-                <div className="rounded-xl border border-emerald-300 bg-white px-3 py-2 text-emerald-800 text-sm flex items-center gap-2">
+                <div className="rounded-xl border border-emerald-300 bg-white px-3 py-2 text-emerald-800 text-sm flex items-center justify-center gap-2 font-medium">
                   <span>✓</span>
                   <span>Fingerprint saved</span>
                 </div>
               )}
 
               {fpStatus === 'cancelled' && (
-                <div className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-orange-800 text-sm">
-                  Enrollment cancelled
+                <div className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-orange-800 text-sm text-center font-medium">
+                  Enrollment skipped
                 </div>
               )}
             </div>

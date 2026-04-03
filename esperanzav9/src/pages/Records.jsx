@@ -106,6 +106,7 @@ export default function Records() {
                           ?? sessionStorage.getItem('bp') 
                           ?? null
             setLatest({
+              id: vitalsData.latest.id,  // ← ADD THIS
               heartRate: vitalsData.latest.heart_rate ?? vitalsData.latest.hr ?? null,
               temperature: vitalsData.latest.temperature ?? null,
               spo2: vitalsData.latest.spo2 ?? vitalsData.latest.oxygen_saturation ?? null,
@@ -119,39 +120,33 @@ export default function Records() {
           // history (normalize each)
           // history (normalize each, preserve nested objects for BP)
           if (Array.isArray(vitalsData.history)) {
-            const normalized = vitalsData.history.map(r => {
-              const vitalsObj = r.vitals ?? r.latest_vitals ?? {};
-
-              // safely get systolic/diastolic
-              const bp = r.blood_pressure ?? r.bp ?? vitalsObj.blood_pressure ?? vitalsObj.bp ?? null;
-              let bpDisplay = '—';
-
-              if (bp) {
-                if (typeof bp === 'object') {
-                  const sys = bp.systolic ?? '—';
-                  const dia = bp.diastolic ?? '—';
-                  bpDisplay = `${sys}/${dia}`;          // ← no unit baked in
-                } else {
-                  // strip any trailing " mmHg" already in the string
-                  bpDisplay = String(bp).replace(/\s*mmHg$/i, '').trim();
+            const normalized = vitalsData.history
+              .map(r => {
+                const vitalsObj = r.vitals ?? r.latest_vitals ?? {}
+                const bp = r.blood_pressure ?? r.bp ?? vitalsObj.blood_pressure ?? vitalsObj.bp ?? null
+                let bpDisplay = '—'
+                if (bp) {
+                  if (typeof bp === 'object') {
+                    bpDisplay = `${bp.systolic ?? '—'}/${bp.diastolic ?? '—'}`
+                  } else {
+                    bpDisplay = String(bp).replace(/\s*mmHg$/i, '').trim()
+                  }
                 }
-              }
+                return {
+                  ...r,
+                  heart_rate: r.heart_rate ?? r.hr ?? vitalsObj.heart_rate ?? null,
+                  temperature: r.temperature ?? vitalsObj.temperature ?? null,
+                  spo2: r.spo2 ?? vitalsObj.spo2 ?? vitalsObj.oxygen_saturation ?? null,
+                  height: r.height ?? vitalsObj.height ?? null,
+                  weight: r.weight ?? vitalsObj.weight ?? null,
+                  bmi: r.bmi ?? vitalsObj.bmi ?? null,
+                  blood_pressure: bpDisplay,
+                  vitals: r.vitals ?? vitalsObj,
+                  latest_vitals: r.latest_vitals ?? vitalsObj,
+                }
+              })
 
-              return {
-                ...r,
-                heart_rate: r.heart_rate ?? r.hr ?? vitalsObj.heart_rate ?? vitalsObj.hr ?? null,
-                temperature: r.temperature ?? vitalsObj.temperature ?? null,
-                spo2: r.spo2 ?? vitalsObj.spo2 ?? vitalsObj.oxygen_saturation ?? null,
-                height: r.height ?? vitalsObj.height ?? vitalsObj.height_cm ?? null,
-                weight: r.weight ?? vitalsObj.weight ?? vitalsObj.weight_kg ?? null,
-                bmi: r.bmi ?? vitalsObj.bmi ?? null,
-                blood_pressure: bpDisplay, // now safe display string
-                vitals: r.vitals ?? vitalsObj,         // keep nested for other use
-                latest_vitals: r.latest_vitals ?? vitalsObj,
-              }
-            });
-
-            setRows(normalized);
+            setRows(normalized)
           }
         }
 
@@ -359,7 +354,7 @@ export default function Records() {
         <span>{label}</span>
         {icon && <img src={icon} alt={alt || `${label} icon`} className="h-5 w-5 object-contain select-none" draggable="false" />}
       </div>
-      <div className="mt-3 text-4xl font-extrabold text-[#406E65] tabular-nums">{value ?? '—'}</div>
+      <div className="mt-3 text-4xl font-extrabold text-[#406E65] tabular-nums">{value ?? 0}</div>
       {unit && <div className="mt-1 text-xs text-[#406E65]">{unit}</div>}
     </div>
   )

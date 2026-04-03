@@ -19,6 +19,8 @@ class HCStaff(models.Model):
     email = models.EmailField(max_length=254, default='N/A')
     position = models.CharField(max_length=50, default='N/A')
     department = models.CharField(max_length=50, default='N/A')
+    fingerprint_id = models.CharField(max_length=10, null=True, blank=True, unique=True)  # ← ADD THIS
+
     
     def set_pin(self, raw_pin):
         """Hashes and sets the staff PIN."""
@@ -154,47 +156,45 @@ class QueueEntry(models.Model):
             is_priority = self.priority_status in ['CRITICAL', 'HIGH', 'MEDIUM']
             
             if is_priority:
-                # Priority patients: 300-999
-                # Find the highest priority queue number today (including completed ones)
+                # Priority patients: 001-300
                 highest_priority = QueueEntry.objects.filter(
                     entered_at__date=today,
-                    queue_number__gte='300',
-                    queue_number__lte='999'
-                ).order_by('-queue_number').first()
-                
+                    queue_number__regex=r'^\d+$',
+                ).extra(
+                    where=["CAST(queue_number AS UNSIGNED) BETWEEN 1 AND 300"]
+                ).order_by('-entered_at').first()
+
                 if highest_priority and highest_priority.queue_number:
                     try:
                         next_num = int(highest_priority.queue_number) + 1
-                        # If we've exceeded 999, wrap to 300
-                        if next_num > 999:
-                            next_num = 300
-                    except ValueError:
-                        next_num = 300
-                else:
-                    next_num = 300
-                
-                self.queue_number = str(next_num)
-            else:
-                # Normal patients: 001-299
-                # Find the highest normal queue number today (including completed ones)
-                highest_normal = QueueEntry.objects.filter(
-                    entered_at__date=today,
-                    queue_number__gte='001',
-                    queue_number__lte='299'
-                ).order_by('-queue_number').first()
-                
-                if highest_normal and highest_normal.queue_number:
-                    try:
-                        next_num = int(highest_normal.queue_number) + 1
-                        # If we've exceeded 299, wrap to 001
-                        if next_num > 299:
+                        if next_num > 300:
                             next_num = 1
                     except ValueError:
                         next_num = 1
                 else:
                     next_num = 1
-                
+
                 self.queue_number = f"{next_num:03d}"
+            else:
+                # Normal patients: 301-999
+                highest_normal = QueueEntry.objects.filter(
+                    entered_at__date=today,
+                    queue_number__regex=r'^\d+$',
+                ).extra(
+                    where=["CAST(queue_number AS UNSIGNED) BETWEEN 301 AND 999"]
+                ).order_by('-entered_at').first()
+
+                if highest_normal and highest_normal.queue_number:
+                    try:
+                        next_num = int(highest_normal.queue_number) + 1
+                        if next_num > 999:
+                            next_num = 301
+                    except ValueError:
+                        next_num = 301
+                else:
+                    next_num = 301
+
+                self.queue_number = str(next_num)
         
         super().save(*args, **kwargs)
     
@@ -351,8 +351,8 @@ def restore_patient(patient_id):
             last_name=archived_patient.last_name,
             sex=archived_patient.sex,
             contact=archived_patient.contact,
-            street=patient.street,
-            barangay=patient.barangay,
+            street=archived_patient.street, 
+            barangay=archived_patient.barangay,
             username=archived_patient.username,
             birthdate=archived_patient.birthdate,
             pin=archived_patient.pin,

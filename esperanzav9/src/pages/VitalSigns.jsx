@@ -20,7 +20,6 @@ export default function VitalSigns() {
   const [showError, setShowError] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
 
-
   const nav = useNavigate()
 
   const profile = useMemo(() => {
@@ -88,14 +87,21 @@ export default function VitalSigns() {
 
     setPriority(newPriority)
     sessionStorage.setItem('last_vitals_priority', newPriority)
-    
+
     if (triage.reasons?.length) {
       sessionStorage.setItem('last_vitals_priority_reasons', JSON.stringify(triage.reasons))
     } else {
       sessionStorage.removeItem('last_vitals_priority_reasons')
     }
 
-    const send = async () => {
+    // ─────────────────────────────────────────────────────────────────────
+    // DO NOT re-post vitals here. Each step component (Weight, Height,
+    // Pulse, Temperature, BP) already called /receive-vitals/ and saved
+    // its value to the SAME VitalSigns row via current_vital_id.
+    // Posting again here would create a DUPLICATE row in the database.
+    // ─────────────────────────────────────────────────────────────────────
+
+    const fetchQueue = async () => {
       try {
         const patient_id = sessionStorage.getItem('patient_id') || profile?.patientId || null
 
@@ -104,47 +110,23 @@ export default function VitalSigns() {
           return
         }
 
-        const vitalsPayload = { 
-          patient_id, 
-          heart_rate: Number(results.heartRate) > 0 ? Number(results.heartRate) : null, 
-          temperature: Number(results.temperature) > 0 ? Number(results.temperature) : null, 
-          oxygen_saturation: Number(results.spo2) > 0 ? Number(results.spo2) : null, 
-          blood_pressure: results.bp && results.bp !== '—' ? results.bp : null, 
-          height: Number(results.height) > 0 ? Number(results.height) : null, 
-          weight: Number(results.weight) > 0 ? Number(results.weight) : null, 
-        }
-
-
-
-        const vitalsRes = await fetch(`${API_URL}/receive-vitals/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(vitalsPayload),
-        })
-
-        if (!vitalsRes.ok) {
-          console.error('Failed to save vitals:', vitalsRes.status)
-          return
-        }
-
+        // Only fetch the queue — vitals are already saved by the step components
         const queueRes = await fetch(`${API_URL}/queue/current_queue/`, {
           credentials: 'include',
         })
 
         if (queueRes.ok) {
           const queueData = await queueRes.json()
-          
-          const myEntry = queueData.find(entry => 
+
+          const myEntry = queueData.find(entry =>
             entry.patient?.patient_id === patient_id
           )
 
           if (myEntry) {
             const queueNum = myEntry.queue_number || '000'
             setQueue(queueNum)
-            
             sessionStorage.setItem('current_queue_number', queueNum)
-            
+
             if (myEntry.priority_status) {
               const backendPriority = myEntry.priority_status.toUpperCase()
               setPriority(backendPriority)
@@ -167,27 +149,26 @@ export default function VitalSigns() {
             history.unshift(record)
             localStorage.setItem('vitalsHistory', JSON.stringify(history))
           } else {
-            console.warn('Patient not found in queue')
+            console.warn('Patient not found in queue yet — queue may still be processing')
             setQueue('---')
           }
         }
       } catch (e) {
-        console.error('Error sending vitals to backend:', e)
+        console.error('Error fetching queue from backend:', e)
         setQueue('ERROR')
       }
     }
 
-    send()
+    fetchQueue()
     savedRef.current = true
   }, [step, results, bmi, profile])
 
-  // ✅ NEW: POS58 Thermal Printer Function (same approach as Records.jsx)
   const handlePrintToPOS58 = async () => {
     try {
       setShowPrinting(true)
-      
+
       const patientId = profile?.patientId || sessionStorage.getItem('patient_id')
-      
+
       if (!patientId) {
         setErrorMessage('Patient ID not found. Please refresh and try again.')
         setShowError(true)
@@ -203,18 +184,16 @@ export default function VitalSigns() {
       })
 
       const data = await res.json()
-      
+
       if (res.ok) {
-        // Show success and then the finished dialog
         setTimeout(() => {
           setShowPrinting(false)
           setShowFinished(true)
         }, 800)
       } else {
         setErrorMessage('Print failed: ' + data.error)
-         setShowError(true)
-          setShowPrinting(false)
-
+        setShowError(true)
+        setShowPrinting(false)
       }
     } catch (err) {
       console.error('POS58 print error:', err)
@@ -288,7 +267,6 @@ export default function VitalSigns() {
             >
               Go to Records
             </Link>
-            {/* ✅ UPDATED: Print button now uses POS58 thermal printer */}
             <button
               onClick={handlePrintToPOS58}
               className="rounded-xl border border-slate-300 hover:bg-slate-50 px-5 py-3 font-semibold text-[#406E65] inline-flex items-center gap-2"
@@ -352,24 +330,21 @@ export default function VitalSigns() {
         </div>
       )}
 
-      
       {showError && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-        <div className="bg-white rounded-2xl shadow-xl p-6 text-center max-w-xs">
-          <p className="text-lg font-semibold text-slate-700">
-            {errorMessage}
-          </p>
-
-          <button
-            onClick={() => setShowError(false)}
-            className="mt-4 rounded-xl bg-[#6ec1af] hover:bg-emerald-800/70 text-white font-semibold px-5 py-2"
-          >
-            Close
-          </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl p-6 text-center max-w-xs">
+            <p className="text-lg font-semibold text-slate-700">
+              {errorMessage}
+            </p>
+            <button
+              onClick={() => setShowError(false)}
+              className="mt-4 rounded-xl bg-[#6ec1af] hover:bg-emerald-800/70 text-white font-semibold px-5 py-2"
+            >
+              Close
+            </button>
+          </div>
         </div>
-      </div>
-    )}
-
+      )}
     </section>
   )
 }

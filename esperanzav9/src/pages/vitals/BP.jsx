@@ -25,12 +25,10 @@ export default function BP() {
     const bpStr = `${sys}/${dia}`
     setValue(bpStr)
 
-    // Persist in session for later steps
     sessionStorage.setItem(SESSION_KEYS?.bp ?? 'bp', bpStr)
     sessionStorage.setItem('step_bp', bpStr)
     sessionStorage.setItem('step_bp_ts', String(Date.now()))
 
-    // Persist to backend - this is the final vital, so mark as complete
     await saveBP(bpStr)
   }
 
@@ -50,7 +48,7 @@ export default function BP() {
         credentials: 'include',
         body: JSON.stringify({
           patient_id: patientId,
-          blood_pressure: bpValue,   // ✅ only change from height
+          blood_pressure: bpValue,
           id: currentVitalId || null,
         }),
       });
@@ -60,7 +58,6 @@ export default function BP() {
       if (response.ok) {
         console.log('Blood pressure saved:', result);
 
-        // ✅ Same logic as height
         if (result?.data?.id) {
           sessionStorage.setItem('current_vital_id', result.data.id);
         }
@@ -73,11 +70,12 @@ export default function BP() {
     }
   };
 
-
-
-
   const handleComplete = () => {
-    // Gather any other vitals already in session for triage
+    // ── BP is the LAST step. Clear current_vital_id so the next patient
+    //    starts a completely fresh VitalSigns row. ──────────────────────
+    sessionStorage.removeItem('current_vital_id');
+
+    // Gather vitals for triage
     const vitals = {
       hr: Number(sessionStorage.getItem('step_hr')) || 0,
       bp: sessionStorage.getItem('step_bp') || sessionStorage.getItem('bp') || '—',
@@ -90,11 +88,9 @@ export default function BP() {
       sessionStorage.setItem('priority', 'PRIORITY')
       sessionStorage.setItem('priority_code', nextPriorityCode())
       sessionStorage.setItem('priority_reasons', JSON.stringify(triage.reasons || []))
-      // show an alert or notification here if desired
-      // alert(`⚠️ Abnormal vitals detected: ${triage.reasons.join(', ')}`)
     }
 
-    nav('/vitals') // go to summary/print page
+    nav('/vitals')
   }
 
   return (

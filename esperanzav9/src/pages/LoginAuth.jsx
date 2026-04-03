@@ -1,6 +1,4 @@
 // LoginAuth.jsx
-// Page for handling login authentication via PIN or fingerprint
-
 import React, { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import NumPad from '../components/NumPad'
@@ -13,12 +11,13 @@ import hidePinIcon from '../assets/hide.png'
 import Popup from '../components/ErrorPopup'
 import backIcon from '../assets/arrow.png'
 
+let globalPollingLock = false
+
 export default function LoginAuth() {
   const { state } = useLocation()
   const role = state?.role || 'patient'
   const nav = useNavigate()
-
-  // UI state
+  const timeoutRef = useRef(null)
   const [mode, setMode] = useState(null)
   const [pin, setPin] = useState('')
   const [username, setUsername] = useState('')
@@ -29,25 +28,50 @@ export default function LoginAuth() {
   const [showUsernameKeyboard, setShowUsernameKeyboard] = useState(false)
   const [InvalidKeyMsg, setInvalidKeyMsg] = useState('')
   
-  // Fingerprint
   const [fpStatus, setFpStatus] = useState('idle')
-  const [scanAttempt, setScanAttempt] = useState(0) // ***** forces scanner reset
+  const [scanAttempt, setScanAttempt] = useState(0)
+  const [fpMessage, setFpMessage] = useState('')
   const pollingRef = useRef(null)
-
-  // Cleanup
+  const lastScannedIdRef = useRef(null)
+  const hasSuccessRef = useRef(false)
+  
+  const safeStopFingerprint = async () => {
+    try {
+      await fetch('http://localhost:8000/api/fingerprint/stop/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+    } catch (err) {
+      console.error('Stop error:', err)
+    }
+  }
+  
   useEffect(() => {
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current)
-      stopFingerprintScan()
+      cleanupFingerprint()
     }
   }, [])
 
-  // -----------------------------------------------------
-  // PIN AUTHENTICATION
-  // -----------------------------------------------------
+  const cleanupFingerprint = async () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+
+    globalPollingLock = false
+    hasSuccessRef.current = false
+    setFpStatus('idle')
+    setFpMessage('')
+    await safeStopFingerprint() 
+  }
+
   const authenticateUser = async (enteredPin, loginType) => {
     if (isAuthenticating) return
-
     if (username.trim().length === 0) {
       setPopupMsg('Please enter your username.')
       return
@@ -56,7 +80,7 @@ export default function LoginAuth() {
     setIsAuthenticating(true)
 
     try {
-      const res = await fetch(`http://localhost:8000/login/`, {
+      const res = await fetch(`http://localhost:8000/api/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -73,6 +97,10 @@ export default function LoginAuth() {
       }
 
       const userData = await res.json()
+
+      if (userData.role !== role) {
+        throw new Error(`This account is a ${userData.role}, not ${role}.`)
+      }
 
       if (userData.role === 'patient') {
         sessionStorage.setItem('patientName', userData.name)
@@ -95,133 +123,126 @@ export default function LoginAuth() {
     }
   }
 
-  // -----------------------------------------------------
-  // FINGERPRINT SCANNING FLOW
-  // -----------------------------------------------------
-
   const startFingerprintScan = async () => {
-    // SAFETY: clear existing interval before starting
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
+    if (globalPollingLock) {
+      setPopupMsg('Another scan is active. Please wait.')
+      return
     }
 
+    await cleanupFingerprint()
+    globalPollingLock = true
+    hasSuccessRef.current = false
+
+    lastScannedIdRef.current = null
     setFpStatus('scanning')
+    setFpMessage(role === 'staff' ? 'Place staff finger...' : 'Place finger...')
 
     try {
-      const res = await fetch('http://localhost:8000/fingerprint/scan/', {
+      const res = await fetch('http://localhost:8000/api/fingerprint/scan/', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
 
-      if (!res.ok) throw new Error('Failed to start fingerprint scan')
+      if (!res.ok) {
+        const err = await res.text()
+        throw new Error(`Scan start failed: ${err}`)
+      }
 
-      // Start polling loop
-      pollingRef.current = setInterval(() => checkFingerprintMatch(), 500)
+      pollingRef.current = setInterval(() => checkFingerprintMatch(), 600)
+      
+      // Back to 10 seconds for 1-phase fast scan
+      timeoutRef.current = setTimeout(async () => {
+        if (hasSuccessRef.current) return
+
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current)
+          pollingRef.current = null
+        }
+
+        globalPollingLock = false
+        await safeStopFingerprint()
+
+        setFpStatus('idle')
+        setFpMessage('')
+        setPopupMsg('No match found. Please register.')
+
+      }, 10000) 
 
     } catch (err) {
-      setPopupMsg(err.message || 'Failed to start fingerprint scanning')
+      setPopupMsg(err.message)
       setFpStatus('idle')
+      globalPollingLock = false
     }
   }
 
   const checkFingerprintMatch = async () => {
+    if (hasSuccessRef.current) return
+
+    const endpoint = role === 'staff'
+      ? 'http://localhost:8000/api/fingerprint/staff/match/'
+      : 'http://localhost:8000/api/fingerprint/patient/match/'   
+
     try {
-      const res = await fetch('http://localhost:8000/fingerprint/match/', {
+      const res = await fetch(endpoint, {
         method: 'GET',
         credentials: 'include'
       })
 
-      if (!res.ok) throw new Error('Failed to check fingerprint')
-
       const data = await res.json()
 
-      // ----------------------
-      // SUCCESS
-      // ----------------------
+      // Keep user informed if button was clicked
+      if (data.message && data.message.includes("Button queued")) {
+        setFpMessage("Button queued! Processing login...")
+        return
+      }
+
+      if (data.status === 'scanning' || data.status === 'place_finger' || data.status === 'remove_finger') {
+        if (data.message && data.message !== fpMessage) {
+          setFpMessage(data.message)
+        }
+        return
+      }
+
       if (data.status === 'success') {
-        setFpStatus('processing')
+        if (hasSuccessRef.current) return
+        hasSuccessRef.current = true
 
         if (pollingRef.current) {
           clearInterval(pollingRef.current)
           pollingRef.current = null
         }
 
-        await stopFingerprintScan()
-
-        // Session
-        sessionStorage.setItem('patientName', data.name)
-        sessionStorage.setItem('isAuthenticated', 'true')
-        sessionStorage.setItem('userRole', 'patient')
-        sessionStorage.setItem('patient_id', data.patient_id)
-
-        setTimeout(() => nav('/portal'), 500)
-        return
-      }
-
-      // ----------------------
-      // ERROR → RETRY
-      // ----------------------
-      if (data.status === 'error') {
-
-        // Stop ALL previous loops
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current)
-          pollingRef.current = null
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current)
+          timeoutRef.current = null
         }
 
-        await stopFingerprintScan()
+        globalPollingLock = false
+        await safeStopFingerprint() 
 
-        setFpStatus('error')
-        setPopupMsg(data.message || 'Fingerprint not recognized')
-
-        // ---- RETRY AFTER 2 SEC ----
-        setTimeout(async () => {
-          // Make ABSOLUTELY sure everything is stopped
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current)
-            pollingRef.current = null
-          }
-
-          await stopFingerprintScan()
-
-          // RESTART progress bar + animation
-          setScanAttempt(a => a + 1)  // *** forces scanner component remount
-          setFpStatus('scanning')
-
-          startFingerprintScan()
-        }, 2000)
-
+        if (role === 'staff') {
+          sessionStorage.setItem('staffName', data.name)
+          sessionStorage.setItem('staff_id', data.staff_id)
+          sessionStorage.setItem('isAuthenticated', 'true')  
+          sessionStorage.setItem('userRole', 'staff')  
+          nav('/staff')
+        } else {
+          sessionStorage.setItem('patientName', data.name)
+          sessionStorage.setItem('patient_id', data.patient_id)
+          sessionStorage.setItem('isAuthenticated', 'true')  
+          sessionStorage.setItem('userRole', 'patient')       
+          nav('/portal')
+        }
         return
       }
 
     } catch (err) {
-      console.error('Fingerprint check error:', err)
+      console.error('Network error:', err)
     }
   }
-
-  const stopFingerprintScan = async () => {
-    try {
-      await fetch('http://localhost:8000/fingerprint/stop/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      })
-    } catch (err) {
-      console.error('Failed to stop scan:', err)
-    }
-  }
-
-  const onFpDone = () => {
-    setFpStatus('idle')
-  }
-
-  // -----------------------------------------------------
-  // PIN KEYPAD INPUT
-  // -----------------------------------------------------
 
   const onKey = (k) => {
     if (isAuthenticating) return
-
     if (k === '⌫') {
       setPin((p) => p.slice(0, -1))
       return
@@ -232,7 +253,6 @@ export default function LoginAuth() {
       if (newPin.length === 4) authenticateUser(newPin, role)
       return
     }
-
     if (k === 'Enter') {
       if (pin.length < 4) {
         setPopupMsg('Please enter your 4-digit PIN.')
@@ -252,19 +272,16 @@ export default function LoginAuth() {
       setInvalidKeyMsg('')
       return
     }
-
     if (key === 'BACKSPACE') {
       setUsername(u => u.slice(0, -1))
       setInvalidKeyMsg('')
       return
     }
-
     if (key === 'SPACE') {
       setUsername(u => u + ' ')
       setInvalidKeyMsg('')
       return
     }
-
     if (key === 'ENTER2') {
       if (pin.length < 4) {
         setPopupMsg('Please enter your 4-digit PIN.')
@@ -273,13 +290,10 @@ export default function LoginAuth() {
       authenticateUser(pin, role)
       return
     }
-
     if (key === 'KEYBOARD') {
       setShowUsernameKeyboard(false)
       return
     }
-
-    // Invalid punctuation/special characters
     if (key && key.length === 1) {
       setInvalidKeyMsg(`Invalid character: "${key}"`)
       setTimeout(() => setInvalidKeyMsg(''), 2000)
@@ -298,31 +312,20 @@ export default function LoginAuth() {
       nav(-1)
       return
     }
-
     if (mode === 'fp') {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
-      }
-      stopFingerprintScan()
-      setFpStatus('idle')
+      cleanupFingerprint()
     }
-
     setShowUsernameKeyboard(false)
     setMode(null)
   }
 
-  // -----------------------------------------------------
-  // RENDER
-  // -----------------------------------------------------
-
   return (
     <section className={`mx-auto max-w-5xl px-4 pt-20 ${showUsernameKeyboard ? 'pb-[22rem]' : 'pb-16'}`}>
-      {/* Back */}
       <div className="mb-3">
         <button onClick={handleBack}
-          className="flex items-center gap-2 rounded-xl bg-transparent px-3 py-2 text-[#406E65]">
+          className="flex items-center gap-2 rounded-xl bg-transparent px-3 py-2 text-[#406E65] hover:bg-gray-100 transition-colors">
           <img src={backIcon} alt="Back" className="h-4 w-4 object-contain" />
+          <span className="text-sm font-medium">Back</span>
         </button>
       </div>
 
@@ -332,121 +335,116 @@ export default function LoginAuth() {
           bg-clip-text text-transparent">
           {role === 'staff' ? 'Staff Login' : 'Patient Login'}
         </h2>
-        <p className="mt-1 text-slate-600 text-center">Choose a login method</p>
+        <p className="mt-1 text-slate-600 text-center">Choose your authentication method</p>
+        
+        <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide
+          ${role === 'staff' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+          <span>{role === 'staff' ? '🔒 Staff Access' : '🏥 Patient Access'}</span>
+        </div>
       </div>
 
-      {/* Method selection */}
       {!mode && (
         <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <button className={tile} onClick={() => setMode('pin')}>
+          <button className={tile} onClick={() => setMode('pin')} disabled={isAuthenticating}>
             <div className="flex flex-col items-center text-white">
               <div className="grid place-items-center h-36 w-full">
                 <img src={pinIcon} alt="PIN" className="h-28 w-28 opacity-95" />
               </div>
-              <div className="mt-4 text-2xl font-extrabold">PIN</div>
+              <div className="mt-4 text-2xl font-extrabold">PIN Code</div>
+              <div className="mt-1 text-sm opacity-80">Username + 4-digit PIN</div>
             </div>
           </button>
 
-          <button
-            className={tile}
-            onClick={() => {
-              setMode('fp')
-              setScanAttempt(a => a + 1)  
-              startFingerprintScan()
-            }}
-          >
+          <button className={tile} onClick={() => {
+            setMode('fp')
+            setScanAttempt(a => a + 1)
+            startFingerprintScan()
+          }} disabled={isAuthenticating || globalPollingLock}>
             <div className="flex flex-col items-center text-white">
               <div className="grid place-items-center h-36 w-full">
                 <img src={fingerprintIcon} alt="Fingerprint" className="h-28 w-28 opacity-95" />
               </div>
               <div className="mt-4 text-2xl font-extrabold">Fingerprint</div>
+              <div className="mt-1 text-sm opacity-80">
+                {globalPollingLock ? 'Scan active elsewhere...' : 'Biometric authentication'}
+              </div>
             </div>
           </button>
         </div>
       )}
 
-      {/* PIN LOGIN */}
       {mode === 'pin' && (
         <div className="mt-10 grid md:grid-cols-[1fr_auto] gap-8 items-start">
-          <div className="card">
-
+          <div className="bg-white rounded-3xl shadow-lg border border-slate-200 p-6 md:p-8">
             <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700">
-                Username
-              </label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Username</label>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 onFocus={() => setShowUsernameKeyboard(true)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    if (!pin || pin.length < 4) {
-                      setPopupMsg('Please enter your 4-digit PIN.')
-                      e.preventDefault()
-                    }
-                  }
-                }}
-                placeholder="Enter your username"
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3"
+                placeholder={`Enter ${role} username`}
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
-              {InvalidKeyMsg && (
-                <p className="mt-1 text-sm text-red-600">{InvalidKeyMsg}</p>
-              )}
+              {InvalidKeyMsg && <p className="mt-2 text-sm text-red-600 font-medium">{InvalidKeyMsg}</p>}
             </div>
 
-            <label className="block text-sm font-medium text-slate-700">4-Digit PIN</label>
-
-            <div className="relative mt-2">
-              {/* Changed the readOnly to onChange*/}
-              <input
-                type={showPin ? 'text' : 'password'}
-                value={pin}
-                onFocus={() => setShowUsernameKeyboard(false)}
-                onChange={(e) => {
-                  const value = e.target.value.replace(/\D/g, '').slice(0, 4)
-                  setPin(value)
-                  if (value.length === 4) {
-                    authenticateUser(value, role)
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && pin.length === 4) {
-                    authenticateUser(pin, role)
-                  }
-                }}
-                className="w-full rounded-xl border px-4 py-3 pr-12 text-2xl tracking-widest text-center"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPin((s) => !s)}
-                className="absolute inset-y-0 right-2 my-auto h-9 w-9 grid place-items-center"
-              >
-                <img
-                  src={showPin ? hidePinIcon : showPinIcon}
-                  alt="Toggle PIN visibility"
-                  className="h-5 w-5"
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">4-Digit PIN</label>
+              <div className="relative">
+                <input
+                  type={showPin ? 'text' : 'password'}
+                  value={pin}
+                  onFocus={() => setShowUsernameKeyboard(false)}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 4)
+                    setPin(value)
+                    if (value.length === 4) authenticateUser(value, role)
+                  }}
+                  placeholder="••••"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 pr-12 text-2xl tracking-[0.5em] text-center font-bold"
                 />
-              </button>
+                <button type="button" onClick={() => setShowPin((s) => !s)}
+                  className="absolute inset-y-0 right-2 my-auto h-9 w-9 grid place-items-center rounded-lg hover:bg-slate-100 transition-colors">
+                  <img src={showPin ? hidePinIcon : showPinIcon} alt="Toggle" className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
-            <p className="mt-2 text-xs text-slate-500">
-              {pinReady
-                ? 'Press Enter on the keypad to continue.'
-                : 'Enter your credentials.'}
+            <p className={`text-sm ${pinReady ? 'text-emerald-600 font-medium' : 'text-slate-500'}`}>
+              {pinReady ? 'Press Enter or tap Login' : 'Enter username and PIN'}
             </p>
-          </div>
 
+            <button onClick={() => pin.length === 4 && authenticateUser(pin, role)}
+              disabled={!pinReady || isAuthenticating}
+              className={`mt-4 w-full py-3 rounded-xl font-bold transition-colors
+                ${pinReady && !isAuthenticating ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+              {isAuthenticating ? 'Authenticating...' : 'Login'}
+            </button>
+          </div>
           <NumPad onKey={onKey} />
         </div>
       )}
 
-      {/* FINGERPRINT LOGIN */}
       {mode === 'fp' && (
-        <div className="mt-10 card">
-          <FingerprintScanner
-            key={scanAttempt}   // forces remount = resets progress + animation
-            onComplete={onFpDone}
-          />
+        <div className="mt-10">
+          <div className={`mb-4 rounded-2xl p-4 text-center
+            ${role === 'staff' ? 'bg-blue-50 border border-blue-200' : 'bg-emerald-50 border border-emerald-200'}`}>
+            <p className={`text-sm font-bold uppercase tracking-wide ${role === 'staff' ? 'text-blue-800' : 'text-emerald-800'}`}>
+              {role === 'staff' ? '🔒 Staff Biometric' : '🏥 Patient Biometric'}
+            </p>
+            <p className="text-xs text-slate-600 mt-1">{fpMessage || 'Place finger on sensor'}</p>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-lg border border-slate-200 p-6 md:p-8">
+            <FingerprintScanner key={scanAttempt} status={fpStatus} message={fpMessage} onComplete={() => {}} />
+            
+            <button onClick={() => {
+              cleanupFingerprint()
+              setMode(null)
+            }} className="mt-6 w-full py-3 rounded-xl border-2 border-slate-300 text-slate-600 font-medium hover:bg-slate-50">
+              Cancel & Try PIN Instead
+            </button>
+          </div>
         </div>
       )}
 
