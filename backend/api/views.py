@@ -35,13 +35,11 @@ scan_start_times = {
     "patient": None,
     "staff": None
 }
-_pending_btn_next = False
-_pending_btn_lock = threading.Lock()
 SCAN_TIMEOUT = 20
 # Add these near your other locks
 _pending_ui_advance = False
 _ui_advance_lock = threading.Lock()
-SERIAL_PORT = 'COM5'
+SERIAL_PORT = '/dev/ttyUSB1'
 BAUD_RATE = 115200
 IS_SCANNING = False
 
@@ -53,58 +51,15 @@ _display_lock = threading.RLock() # <-- Upgraded to RLock
 
 # ── Serial ownership ──────────────────────────────────────────────────────────
 _serial_busy = threading.Event()
-_pending_queue_number = None
-_pending_queue_lock = threading.RLock() # <-- Upgraded to RLock
 
 def _claim_serial():
     """Mark serial port as busy. Call at the start of every sensor session."""
     _serial_busy.set()
 
 def _release_serial():
-    """Release serial port, process any pending button clicks, and update display."""
-    global _pending_btn_next
-    
-    # --- Execute any deferred button press BEFORE giving up the port ---
-    with _pending_btn_lock:
-        if _pending_btn_next:
-            _pending_btn_next = False
-            print("[Queue] Executing deferred button press from scan/vitals...")
-            if _advance_queue_on_button():
-                _btn_next_event.set()
-    # -------------------------------------------------------------------
+    """Release serial port."""
+    _serial_busy.clear()
 
-    _push_current_queue_to_display() # Force display update FIRST
-    _serial_busy.clear()             # THEN clear the lock
-
-def _push_current_queue_to_display():
-    """Find the current serving/waiting queue number and send it to the display."""
-    try:
-        entry = QueueEntry.objects.filter(status='SERVING').first()
-
-        if not entry:
-            entry = QueueEntry.objects.filter(
-                status='WAITING'
-            ).annotate(
-                priority_order=Case(
-                    When(priority_status='CRITICAL', then=1),
-                    When(priority_status='HIGH', then=2),
-                    When(priority_status='MEDIUM', then=3),
-                    default=4,
-                    output_field=IntegerField()
-                )
-            ).order_by('priority_order', 'entered_at').first()
-
-        queue_number = entry.queue_number if entry else 0
-
-        ser = get_serial()
-        if ser:
-            with _serial_lock:
-                ser.write(f"Q:{queue_number}\n".encode())
-                ser.flush()
-            print(f"[queue display] pushed Q:{queue_number} after serial release")
-
-    except Exception as e:
-        print(f"[queue display] error pushing after release: {e}")
 
 @api_view(['POST'])
 def tare_weight(request):
@@ -317,7 +272,6 @@ def start_fingerprint_enrollment(request):
 
 @api_view(['GET'])
 def check_enrollment_status(request):
-    global _pending_btn_next
     fingerprint_id = request.query_params.get('fingerprint_id')
     patient_id = request.query_params.get('patient_id')
 
@@ -341,13 +295,6 @@ def check_enrollment_status(request):
                     continue
                 try:
                     parsed = json.loads(line)
-                    
-                    if parsed.get('status') == 'btn_next':
-                        with _pending_btn_lock:
-                            _pending_btn_next = True
-                        print("[Enrollment] Button pressed! Queuing next patient after enrollment.")
-                        continue
-
                     last_data = parsed
                     
                     if parsed.get('status') in ('enrolled', 'error', 'cancelled'):
@@ -439,7 +386,6 @@ def start_staff_fingerprint_enrollment(request):
 
 @api_view(['GET'])
 def check_staff_enrollment_status(request):
-    global _pending_btn_next
     fingerprint_id = request.query_params.get('fingerprint_id')
     staff_id = request.query_params.get('staff_id')
 
@@ -463,12 +409,6 @@ def check_staff_enrollment_status(request):
                     continue
                 try:
                     parsed = json.loads(line)
-                    
-                    if parsed.get('status') == 'btn_next':
-                        with _pending_btn_lock:
-                            _pending_btn_next = True
-                        print("[Enrollment] Button pressed! Queuing next patient after enrollment.")
-                        continue
 
                     last_data = parsed
                     if parsed.get('status') in ('enrolled', 'error', 'cancelled'):
@@ -1093,7 +1033,7 @@ def get_patient_vitals(request):
             bmi_value = round(v.weight / (height_m * height_m), 1)
             return {
                 'id':             v.vitals_id,
-                'date':           v.date_time_recorded.strftime('%Y-%m-%d %H:%M'),
+                'date':           v.date_time_recorded.strftime('%Y-%m-%d %I:%M %p'),
                 'heart_rate':     v.heart_rate,
                 'blood_pressure': v.blood_pressure,
                 'temperature':    v.temperature,
@@ -1148,7 +1088,7 @@ def get_patient_vitals_by_id(request, patient_id):
             bmi_value = round(v.weight / (height_m * height_m), 1)
             return {
                 'id':             v.vitals_id,
-                'date':           v.date_time_recorded.strftime('%Y-%m-%d %H:%M'),
+                'date':           v.date_time_recorded.strftime('%Y-%m-%d %I:%M %p'),
                 'heart_rate':     v.heart_rate,
                 'blood_pressure': v.blood_pressure,
                 'temperature':    v.temperature,
@@ -1516,7 +1456,7 @@ def print_patient_vitals(request, patient_id=None):
             "header": {
                 "facility_name": "Esperanza Health Center",
                 "document_type": "Vital Signs Result",
-                "printed_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+                "printed_at": timezone.now().strftime("%Y-%m-%d %I:%M:%S %p")
             },
             "patient_info": {
                 "patient_id": patient.patient_id,
@@ -1525,12 +1465,12 @@ def print_patient_vitals(request, patient_id=None):
                 "contact": patient.contact
             },
             "measurements": {
-                "weight": f"{latest_vital.weight} kg" if latest_vital.weight else "—",
-                "height": f"{latest_vital.height} cm" if latest_vital.height else "—",
-                "bmi": f"{bmi_value} kg/m²" if bmi_value else "—",
-                "heart_rate": f"{latest_vital.heart_rate} bpm" if latest_vital.heart_rate else "—",
-                "temperature": f"{latest_vital.temperature} °C" if latest_vital.temperature else "—",
-                "oxygen_saturation": f"{latest_vital.oxygen_saturation} %" if latest_vital.oxygen_saturation else "—",
+                "weight": f"{latest_vital.weight} kg" if latest_vital.weight is not None else "—",
+                "height": f"{latest_vital.height} cm" if latest_vital.height is not None else "—",
+                "bmi": f"{bmi_value} kg/m²" if bmi_value is not None else "—",
+                "heart_rate": f"{latest_vital.heart_rate} bpm" if latest_vital.heart_rate is not None else "—",
+                "temperature": f"{latest_vital.temperature} °C" if latest_vital.temperature is not None else "—",
+                "oxygen_saturation": f"{latest_vital.oxygen_saturation} %" if latest_vital.oxygen_saturation is not None else "—",
                 "blood_pressure": f"{latest_vital.blood_pressure} mmHg" if latest_vital.blood_pressure else "—"
             },
             "triage": {
@@ -1544,7 +1484,7 @@ def print_patient_vitals(request, patient_id=None):
             },
             "footer": {
                 "disclaimer": "This is your most recent vital signs result for personal reference. Not an official medical record.",
-                "recorded_at": latest_vital.date_time_recorded.strftime("%Y-%m-%d %H:%M:%S")
+                "recorded_at": latest_vital.date_time_recorded.strftime("%Y-%m-%d %I:%M:%S %p")
             }
         }
         
@@ -1790,13 +1730,13 @@ def print_queue_ticket(request):
             "header": {
                 "facility_name": "Esperanza Health Center",
                 "document_type": "Queue Ticket",
-                "printed_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+                "printed_at": timezone.now().strftime("%Y-%m-%d %I:%M:%S %p")
             },
             "queue": {
                 "number": str(queue_entry.queue_number).zfill(3),
                 "priority": queue_entry.priority_status,
                 "priority_code": get_priority_code(queue_entry.priority_status),
-                "entered_at": queue_entry.entered_at.strftime("%H:%M:%S")
+                "entered_at": queue_entry.entered_at.strftime("%I:%M:%S %p")
             },
             "patient_info": {
                 "patient_id": patient.patient_id,
@@ -1863,14 +1803,14 @@ Patient: {patient.first_name} {patient.last_name}
 Age: {age_str}
 ID: {patient.patient_id}
 
-TEMP: {latest_vital.temperature or '—'} °C
-PULSE: {latest_vital.heart_rate or '—'} bpm
-SPO2: {latest_vital.oxygen_saturation or '—'} %
-HEIGHT: {latest_vital.height or '—'} cm
-WEIGHT: {latest_vital.weight or '—'} kg
+TEMP: {latest_vital.temperature if latest_vital.temperature is not None else '—'} °C
+PULSE: {latest_vital.heart_rate if latest_vital.heart_rate is not None else '—'} bpm
+SPO2: {latest_vital.oxygen_saturation if latest_vital.oxygen_saturation is not None else '—'} %
+HEIGHT: {latest_vital.height if latest_vital.height is not None else '—'} cm
+WEIGHT: {latest_vital.weight if latest_vital.weight is not None else '—'} kg
 BMI: {bmi_str} kg/m²
-BP: {latest_vital.blood_pressure or '—'}
-Recorded at: {latest_vital.date_time_recorded.strftime("%Y-%m-%d %H:%M")}
+BP: {latest_vital.blood_pressure if latest_vital.blood_pressure else '—'}
+Recorded at: {latest_vital.date_time_recorded.strftime("%Y-%m-%d %I:%M %p")}
 
 Thank you for visiting!
 =============================
@@ -1939,20 +1879,20 @@ def print_vitals_and_queue_pos58(request):
        {vitals.date_time_recorded.strftime("%m/%d/%Y %I:%M %p")}
 --------------------------------
              Queue No.
-{big_queue}
+               {big_queue}
 Priority: [{priority} {get_priority_code(priority)}]
 --------------------------------
 Patient ID      {patient.patient_id}
 Patient Name    {patient.first_name} {patient.last_name}
 --------------------------------
 Measurements
-Weight          {vitals.weight or "—"} kg
-Height          {vitals.height or "—"} cm
+Weight          {vitals.weight if vitals.weight is not None else "—"} kg
+Height          {vitals.height if vitals.height is not None else "—"} cm
 BMI             {bmi_str} kg/m²
-Heart Rate      {vitals.heart_rate or "—"} bpm
-SpO2            {vitals.oxygen_saturation or "—"} %
-Temp            {vitals.temperature or "—"} °C
-BP              {vitals.blood_pressure or "—"} mmHg
+Heart Rate      {vitals.heart_rate if vitals.heart_rate is not None else "—"} bpm
+SpO2            {vitals.oxygen_saturation if vitals.oxygen_saturation is not None else "—"} %
+Temp            {vitals.temperature if vitals.temperature is not None else "—"} °C
+BP              {vitals.blood_pressure if vitals.blood_pressure else "—"} mmHg
 --------------------------------
 Thank you for visiting!
 For check-up and consultation,
@@ -1971,31 +1911,6 @@ please proceed to the clinic area.
 
 # Add this to your views.py
 
-@api_view(['POST'])
-def update_queue_display(request):
-    queue_number = request.data.get('queue_number', 0)
-
-    if _serial_busy.is_set():
-        # Serial is busy — save the number, it will be sent on next _release_serial()
-        global _pending_queue_number
-        with _pending_queue_lock:
-            _pending_queue_number = queue_number
-        return Response({"message": "deferred", "queue_number": queue_number}, status=200)
-
-    ser = get_serial()
-    if ser is None:
-        return Response({"error": "Arduino connection error"}, status=500)
-
-    try:
-        with _serial_lock:
-            ser.write(f"Q:{queue_number}\n".encode())
-            ser.flush()
-            print(f"[display] Sent: Q:{queue_number}")
-
-        return Response({"message": "Display updated", "queue_number": queue_number}, status=200)
-
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
 
 
 
@@ -2243,160 +2158,11 @@ def verify_staff_fingerprint(request):
             status=404
         )
     
-@api_view(['GET'])
-def check_patient_fingerprint_match(request):
-    global IS_SCANNING, _pending_btn_next
-    ser = get_serial()
-    if ser is None:
-        return Response({"error": "Arduino connection error"}, status=503)
-
-    response_data = None
-    should_stop = False
-
-    try:
-        with _serial_lock:
-            if scan_start_times["patient"] is None:
-                scan_start_times["patient"] = time.time()
-
-            if time.time() - scan_start_times["patient"] > SCAN_TIMEOUT:
-                scan_start_times["patient"] = None
-                IS_SCANNING = False
-                should_stop = True
-                response_data = {
-                    "status": "error",
-                    "error_type": "UNKNOWN_FINGERPRINT",
-                    "message": "Fingerprint scan timed out"
-                }
-
-            else:
-                last_data = None
-                time.sleep(0.05) 
-                
-                # --- FAST BUFFER DRAIN ---
-                while ser.in_waiting > 0:
-                    line = ser.readline().decode('utf-8', errors='ignore').strip()
-                    if not line:
-                        continue
-                        
-                    # 1. ALWAYS catch the button instantly
-                    if '"btn_next"' in line or 'btn_next' in line:
-                        with _pending_btn_lock:
-                            _pending_btn_next = True
-                        print("\n[Fingerprint] Button pressed! Queuing next patient after 5 sec wait.")
-                        continue
-                        
-                    try:
-                        if '}{' in line:
-                            line = '{' + line.split('}{')[-1]
-                            
-                        data = json.loads(line)
-                        
-                        if data.get("status") != "btn_next":
-                            last_data = data
-                            
-                        # Only break if it is the TRUE final message sent after 5 seconds
-                        if data.get("status") in ("found", "not_found", "error", "cancelled"):
-                            break
-                            
-                    except json.JSONDecodeError:
-                        continue
-                # -------------------------
-
-                if last_data is None:
-                    msg = "Button queued! Please wait..." if _pending_btn_next else "Waiting for finger..."
-                    return Response({"status": "scanning", "message": msg})
-
-                arduino_status = last_data.get("status", "")
-
-                # During the 5 second wait, Arduino sends "remove_finger"
-                if arduino_status in ("scanning", "place_finger", "remove_finger"):
-                    msg = "Button queued! Please wait..." if _pending_btn_next else last_data.get("message", "")
-                    return Response({"status": arduino_status, "message": msg})
-
-                elif arduino_status == "not_found":
-                    scan_start_times["patient"] = None
-                    IS_SCANNING = False
-                    should_stop = True
-                    response_data = {
-                        "status": "error",
-                        "error_type": "UNKNOWN_FINGERPRINT",
-                        "message": "Fingerprint not registered"
-                    }
-
-                elif arduino_status == "found":
-                    fingerprint_id = str(last_data.get("id"))
-                    patient = Patient.objects.filter(fingerprint_id=fingerprint_id).first()
-
-                    if patient:
-                        scan_start_times["patient"] = None
-                        IS_SCANNING = False
-                        should_stop = True
-                        request.session["user_type"] = "patient"
-                        request.session["patient_id"] = patient.patient_id
-                        patient.last_visit = timezone.now()
-                        patient.save()
-                        response_data = {
-                            "status": "success",
-                            "user_type": "patient",
-                            "patient_id": patient.patient_id,
-                            "name": f"{patient.first_name} {patient.last_name}",
-                            "confidence": last_data.get("confidence", 0)
-                        }
-                    else:
-                        staff = HCStaff.objects.filter(fingerprint_id=fingerprint_id).first()
-                        if staff:
-                            scan_start_times["patient"] = None
-                            IS_SCANNING = False
-                            should_stop = True
-                            response_data = {
-                                "status": "error",
-                                "error_type": "WRONG_ROLE",
-                                "found_role": "staff",
-                                "staff_name": f"{staff.first_name} {staff.last_name}",
-                                "message": "This fingerprint belongs to Staff. Use Staff Login."
-                            }
-                        else:
-                            scan_start_times["patient"] = None
-                            IS_SCANNING = False
-                            should_stop = True
-                            response_data = {
-                                "status": "error",
-                                "error_type": "UNKNOWN_FINGERPRINT",
-                                "message": "Fingerprint not registered"
-                            }
-                else:
-                    return Response(last_data)
-
-        if should_stop:
-            try:
-                with _serial_lock:
-                    ser.write(b"STOP\n")
-                    ser.flush()
-            except Exception:
-                pass
-            finally:
-                # This naturally executes your queued button press the instant the 5 seconds are up!
-                _release_serial()
-
-        return Response(response_data)
-
-    except Exception as e:
-        scan_start_times["patient"] = None
-        IS_SCANNING = False
-        try:
-            with _serial_lock:
-                ser.write(b"STOP\n")
-                ser.flush()
-        except Exception:
-            pass
-        finally:
-            _release_serial() 
-        return Response({"error": str(e)}, status=500)
 
 
 @api_view(['GET'])
 def check_staff_fingerprint_match(request):
-    global IS_SCANNING, _pending_btn_next
+    global IS_SCANNING
     ser = get_serial()
     if ser is None:
         return Response({"error": "Arduino connection error"}, status=503)
@@ -2428,20 +2194,12 @@ def check_staff_fingerprint_match(request):
                     if not line:
                         continue
                         
-                    if '"btn_next"' in line or 'btn_next' in line:
-                        with _pending_btn_lock:
-                            _pending_btn_next = True
-                        print("\n[Fingerprint] Button pressed! Queuing next patient after 5 sec wait.")
-                        continue
-                            
                     try:
                         if '}{' in line:
                             line = '{' + line.split('}{')[-1]
                             
                         data = json.loads(line)
-                        
-                        if data.get("status") != "btn_next":
-                            last_data = data
+                        last_data = data
                             
                         if data.get("status") in ("found", "not_found", "error", "cancelled"):
                             break
@@ -2450,14 +2208,12 @@ def check_staff_fingerprint_match(request):
                         continue
 
                 if last_data is None:
-                    msg = "Button queued! Please wait..." if _pending_btn_next else "Waiting for finger..."
-                    return Response({"status": "scanning", "message": msg})
+                    return Response({"status": "scanning", "message": "Waiting for finger..."})
 
                 arduino_status = last_data.get("status", "")
 
                 if arduino_status in ("scanning", "place_finger", "remove_finger"):
-                    msg = "Button queued! Please wait..." if _pending_btn_next else last_data.get("message", "")
-                    return Response({"status": arduino_status, "message": msg})
+                    return Response({"status": arduino_status, "message": last_data.get("message", "")})
 
                 elif arduino_status == "not_found":
                     scan_start_times["staff"] = None
@@ -2521,7 +2277,6 @@ def check_staff_fingerprint_match(request):
             except Exception:
                 pass
             finally:
-                # This naturally executes your queued button press the instant the 5 seconds are up!
                 _release_serial()
 
         return Response(response_data)
@@ -2602,14 +2357,6 @@ def _read_single_vital(command: bytes, expected_keys, timeout: int = 15):
                     if 'debug' in parsed:
                         continue
 
-                    # ---- NEW: Catch button press during Vitals ----
-                    if parsed.get('status') == 'btn_next':
-                        global _pending_btn_next
-                        with _pending_btn_lock:
-                            _pending_btn_next = True
-                        print("[Vitals] Button pressed! Queuing next patient after vitals finish.")
-                        continue  # Keep waiting for the actual vital signs
-                    # -----------------------------------------------
 
                     if all(k in parsed for k in expected_keys):
                         return parsed, None
@@ -2745,7 +2492,7 @@ _advance_lock = threading.Lock()
 _last_advance_time = 0
 
 def _advance_queue_on_button():
-    """Event-triggered database update. NO TIMERS."""
+    """Event-triggered database update. NO TIMERS. NO SERIAL WRITES."""
     try:
         close_old_connections()
         with transaction.atomic():
@@ -2771,28 +2518,25 @@ def _advance_queue_on_button():
                 next_patient.save()
                 display_num = str(next_patient.queue_number).zfill(3)
 
-        # 3. Send to Arduino display
-        ser = get_serial()
-        if ser:
-            with _serial_lock:
-                ser.write(f"Q:{display_num}\n".encode())
-                ser.flush()
-        
-        return True
+        # Notice: No serial.write() here! The RPi handles it now.
+        return True, display_num
         
     except Exception as e:
         print(f"Error advancing queue: {e}")
-        return False
+        return False, "000"
+
 
 @api_view(['POST'])
 def trigger_next_button(request):
-    """Manual UI trigger from the Tablet"""
-    if _advance_queue_on_button():
-        _btn_next_event.set()
-        return Response({"status": "success"})
+    """Manual UI trigger from the Tablet OR physical RPi button"""
+    success, display_num = _advance_queue_on_button()
+    
+    if success:
+        _btn_next_event.set() # Tells the React UI to update
+        # We return 'new_number' so the RPi script can read it
+        return Response({"status": "success", "new_number": display_num})
         
     return Response({"status": "error", "message": "Failed to advance queue"}, status=500)
-
 
 
 @api_view(['GET'])
@@ -2846,101 +2590,139 @@ def check_next_button(request):
     return Response({"pressed": False, "sensor_busy": busy})
 
 
+@api_view(['GET'])
+def check_patient_fingerprint_match(request):
+    global IS_SCANNING
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Arduino connection error"}, status=503)
 
+    response_data = None
+    should_stop = False
 
-def _push_current_queue_to_display():
-    """Called by _release_serial() after every sensor session to restore screen."""
     try:
-        entry = QueueEntry.objects.filter(status='SERVING').first()
+        with _serial_lock:
+            if scan_start_times["patient"] is None:
+                scan_start_times["patient"] = time.time()
 
-        if not entry:
-            entry = (
-                QueueEntry.objects
-                .filter(status='WAITING')
-                .annotate(
-                    priority_order=Case(
-                        When(priority_status='CRITICAL', then=1),
-                        When(priority_status='HIGH',     then=2),
-                        When(priority_status='MEDIUM',   then=3),
-                        default=4,
-                        output_field=IntegerField(),
-                    )
-                )
-                .order_by('priority_order', 'entered_at')
-                .first()
-            )
+            if time.time() - scan_start_times["patient"] > SCAN_TIMEOUT:
+                scan_start_times["patient"] = None
+                IS_SCANNING = False
+                should_stop = True
+                response_data = {
+                    "status": "error",
+                    "error_type": "UNKNOWN_FINGERPRINT",
+                    "message": "Fingerprint scan timed out"
+                }
 
-        queue_number = str(entry.queue_number).zfill(3) if entry else "000"
+            else:
+                last_data = None
+                time.sleep(0.05) 
+                
+                # --- FAST BUFFER DRAIN ---
+                while ser.in_waiting > 0:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if not line:
+                        continue
+                        
+                    try:
+                        if '}{' in line:
+                            line = '{' + line.split('}{')[-1]
+                            
+                        data = json.loads(line)
+                        last_data = data
+                            
+                        # Only break if it is the TRUE final message sent after 5 seconds
+                        if data.get("status") in ("found", "not_found", "error", "cancelled"):
+                            break
+                            
+                    except json.JSONDecodeError:
+                        continue
+                # -------------------------
 
-        ser = get_serial()
-        if ser:
-            with _serial_lock:
-                ser.write(f"Q:{queue_number}\n".encode())
-                ser.flush()
+                if last_data is None:
+                    return Response({"status": "scanning", "message": "Waiting for finger..."})
+
+                arduino_status = last_data.get("status", "")
+
+                if arduino_status in ("scanning", "place_finger", "remove_finger"):
+                    return Response({"status": arduino_status, "message": last_data.get("message", "")})
+
+                elif arduino_status == "not_found":
+                    scan_start_times["patient"] = None
+                    IS_SCANNING = False
+                    should_stop = True
+                    response_data = {
+                        "status": "error",
+                        "error_type": "UNKNOWN_FINGERPRINT",
+                        "message": "Fingerprint not registered"
+                    }
+
+                elif arduino_status == "found":
+                    fingerprint_id = str(last_data.get("id"))
+                    patient = Patient.objects.filter(fingerprint_id=fingerprint_id).first()
+
+                    if patient:
+                        scan_start_times["patient"] = None
+                        IS_SCANNING = False
+                        should_stop = True
+                        request.session["user_type"] = "patient"
+                        request.session["patient_id"] = patient.patient_id
+                        patient.last_visit = timezone.now()
+                        patient.save()
+                        response_data = {
+                            "status": "success",
+                            "user_type": "patient",
+                            "patient_id": patient.patient_id,
+                            "name": f"{patient.first_name} {patient.last_name}",
+                            "confidence": last_data.get("confidence", 0)
+                        }
+                    else:
+                        staff = HCStaff.objects.filter(fingerprint_id=fingerprint_id).first()
+                        if staff:
+                            scan_start_times["patient"] = None
+                            IS_SCANNING = False
+                            should_stop = True
+                            response_data = {
+                                "status": "error",
+                                "error_type": "WRONG_ROLE",
+                                "found_role": "staff",
+                                "staff_name": f"{staff.first_name} {staff.last_name}",
+                                "message": "This fingerprint belongs to Staff. Use Staff Login."
+                            }
+                        else:
+                            scan_start_times["patient"] = None
+                            IS_SCANNING = False
+                            should_stop = True
+                            response_data = {
+                                "status": "error",
+                                "error_type": "UNKNOWN_FINGERPRINT",
+                                "message": "Fingerprint not registered"
+                            }
+                else:
+                    return Response(last_data)
+
+        if should_stop:
+            try:
+                with _serial_lock:
+                    ser.write(b"STOP\n")
+                    ser.flush()
+            except Exception:
+                pass
+            finally:
+                _release_serial()
+
+        return Response(response_data)
 
     except Exception as e:
-        print(f"[queue display] error in _push_current_queue_to_display: {e}")
-
-def _hardware_event_listener():
-    """
-    Event-Driven Serial Listener with Yielding.
-    Uses a 0.5s timeout so it can check for locks and get out of the way 
-    when you try to scan a fingerprint or take vitals.
-    """
-    global IS_SCANNING, _btn_next_event
-    
-    while True:
+        scan_start_times["patient"] = None
+        IS_SCANNING = False
         try:
-            # Yield if the sensor is locked for vitals/enrollment
-            if _serial_busy.is_set() or _enrollment_active.is_set() or IS_SCANNING:
-                time.sleep(0.2)
-                continue
-
-            ser = get_serial()
-            if ser is None:
-                time.sleep(2)
-                continue
-
-            # ==========================================
-            # SAFE BLOCKING I/O - TIMEOUT ALLOWS YIELDING
-            # ==========================================
-            # Instead of None (infinite wait), use 0.5s. 
-            # This allows the thread to wake up, check if you clicked "Enroll", 
-            # and step away BEFORE stealing the Arduino's enrollment data.
-            ser.timeout = 0.5  
-            
-            try:
-                raw_line = ser.readline() 
-            except Exception:
-                continue
-                
-            if not raw_line:
-                continue # No data came in, loop around and check locks again
-
-            line = raw_line.decode('utf-8', errors='ignore').strip()
-            
-            if line:
-                try:
-                    data = json.loads(line)
-                    if data.get('status') == 'btn_next':
-                        print("\n[EVENT] Hardware Button Fired!")
-                        
-                        # Process the Queue
-                        if _advance_queue_on_button():
-                            _btn_next_event.set()
-
-                        # Destroy the electrical 'bounce'
-                        with _serial_lock:
-                            ser.reset_input_buffer()
-                            ser.reset_output_buffer()
-                            
-                except json.JSONDecodeError:
-                    pass
-
-        except Exception as e:
-            print(f"Hardware Event Error: {e}")
-            time.sleep(1)
-
-# Start the Event Listener Thread
-_event_thread = threading.Thread(target=_hardware_event_listener, daemon=True)
-_event_thread.start()
+            with _serial_lock:
+                ser.write(b"STOP\n")
+                ser.flush()
+        except Exception:
+            pass
+        finally:
+            _release_serial() 
+        return Response({"error": str(e)}, status=500)

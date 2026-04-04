@@ -10,7 +10,7 @@ from .views import (
     start_fingerprint_enrollment, check_enrollment_status, delete_fingerprint,
     start_fingerprint_scan, check_fingerprint_match, stop_fingerprint_scan,
     print_patient_vitals, print_queue_ticket, print_to_pos58, print_vitals_and_queue_pos58,
-    update_queue_display, get_current_queue_for_display, verify_pin,
+    get_current_queue_for_display, verify_pin,
     start_staff_fingerprint_enrollment,
     check_staff_enrollment_status,
     delete_staff_fingerprint,
@@ -30,10 +30,11 @@ router.register(r'vitals', VitalSignsViewSet)
 router.register(r'queue', QueueViewSet)
 
 urlpatterns = [ 
+    # Put your custom queue paths FIRST
     path('queue/check-next-button/', check_next_button, name='check_next_button'),
+    path('queue/trigger-next/', trigger_next_button, name='trigger_next_button'),
 
     path('staff/verify-pin/', verify_pin, name='staff/verify-pin'),
-               
     path('', include(router.urls)),    
     path('login/', login, name="login"),
     path('logout/', logout, name="logout"),
@@ -87,8 +88,6 @@ urlpatterns = [
     path("print-vitals-and-queue/", print_vitals_and_queue_pos58),
     
     # Display paths
-    path('update-display/', update_queue_display, name='update_queue_display'),
     path('current-display/', get_current_queue_for_display, name='get_current_queue_display'),
     path('fingerprint/enroll/stop/', stop_fingerprint_enrollment, name='stop_fingerprint_enrollment'),
-    path('queue/trigger-next/', trigger_next_button, name='trigger_next_button'),
 ]
