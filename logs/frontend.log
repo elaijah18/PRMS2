@@ -1,9 +1,12 @@
-Traceback (most recent call last):
-  File "C:\Users\christine leanne\Downloads\PRMS2-dp2\PRMS2\esperanzav9\run_frontend_server.py", line 36, in <module>
-    with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 456, in __init__
-    self.server_bind()
-  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 472, in server_bind
-    self.socket.bind(self.server_address)
-OSError: [WinError 10048] Only one usage of each socket address (protocol/network address/port) is normally permitted
+Frontend server started on http://localhost:8080
+Serving files from: C:\Users\christine leanne\Downloads\PRMS2-dp2\PRMS2\esperanzav9\dist/
+Press Ctrl+C to stop the server
+127.0.0.1 - - [06/Apr/2026 22:09:43] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 22:09:43] "GET /assets/index-CWdJLrkA.js HTTP/1.1" 304 -
+127.0.0.1 - - [06/Apr/2026 22:09:43] "GET /assets/index-sDezBIkG.css HTTP/1.1" 304 -
+127.0.0.1 - - [06/Apr/2026 22:09:44] "GET /assets/personnel-Br-GDiJw.png HTTP/1.1" 304 -
+127.0.0.1 - - [06/Apr/2026 22:09:44] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 22:09:44] code 404, message File not found
+127.0.0.1 - - [06/Apr/2026 22:09:44] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [06/Apr/2026 22:09:44] "GET /assets/background-DCzQtUGr.png HTTP/1.1" 304 -
+^C
