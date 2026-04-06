@@ -6,12 +6,14 @@ import ResultCard from '../../components/ResultCard'
 import { SESSION_KEYS } from './utils'
 import bpImg from '../../assets/bp.png'
 import { triageAbnormal, nextPriorityCode } from '../utils/triage'
+import NumPad from '../../components/NumPad'
 
 export default function BP() {
   const nav = useNavigate()
 
   const [systolic, setSystolic] = useState('')
   const [diastolic, setDiastolic] = useState('')
+  const [activeField, setActiveField] = useState('systolic')
   const [value, setValue] = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -30,6 +32,35 @@ export default function BP() {
     sessionStorage.setItem('step_bp_ts', String(Date.now()))
 
     await saveBP(bpStr)
+  }
+
+  const handleNumPadKey = (key) => {
+    const isBackspace = key === 'BACKSPACE' || key === '⌫'
+    const isEnter = key === 'ENTER' || key === 'Enter'
+
+    if (isEnter) {
+      handleSubmit()
+      return
+    }
+
+    if (activeField === 'systolic') {
+      if (isBackspace) {
+        setSystolic((prev) => prev.slice(0, -1))
+        return
+      }
+      if (/^\d$/.test(key) && systolic.length < 3) {
+        setSystolic((prev) => prev + key)
+      }
+      return
+    }
+
+    if (isBackspace) {
+      setDiastolic((prev) => prev.slice(0, -1))
+      return
+    }
+    if (/^\d$/.test(key) && diastolic.length < 3) {
+      setDiastolic((prev) => prev + key)
+    }
   }
 
   const saveBP = async (bpValue) => {
@@ -119,6 +150,7 @@ export default function BP() {
               className="border rounded-xl px-4 py-3 shadow-sm text-center w-40"
               value={systolic}
               onChange={(e) => setSystolic(e.target.value)}
+              onFocus={() => setActiveField('systolic')}
             />
             <input
               type="number"
@@ -126,7 +158,12 @@ export default function BP() {
               className="border rounded-xl px-4 py-3 shadow-sm text-center w-40"
               value={diastolic}
               onChange={(e) => setDiastolic(e.target.value)}
+              onFocus={() => setActiveField('diastolic')}
             />
+          </div>
+
+          <div className="mt-6 flex justify-center">
+            <NumPad onKey={handleNumPadKey} />
           </div>
 
           <div className="mt-8 text-center">
