@@ -74,7 +74,7 @@ function renderKeyContent(key, label) {
   if (key === "BACKSPACE") {
     return (
       <span className="flex flex-col items-center justify-center leading-none">
-        <MdBackspace className="text-[22px]" />
+        <MdBackspace className="text-[28px]" />
       </span>
     );
   }
@@ -82,7 +82,7 @@ function renderKeyContent(key, label) {
   if (key === "ENTER2") {
     return (
       <span className="flex flex-col items-center justify-center leading-none">
-        <MdKeyboardReturn className="text-[22px]" />
+        <MdKeyboardReturn className="text-[28px]" />
       </span>
     );
   }
@@ -90,7 +90,7 @@ function renderKeyContent(key, label) {
   if (key === "SHIFT1" || key === "SHIFT2") {
     return (
       <span className="flex flex-col items-center justify-center leading-none">
-        <MdNorth className="text-[22px]" />
+        <MdNorth className="text-[28px]" />
       </span>
     );
   }
@@ -98,14 +98,14 @@ function renderKeyContent(key, label) {
   if (key === "GLOBE") {
     return (
         <span className="flex flex-col items-center justify-center leading-none">
-        <MdLanguage className="text-[25px]" />
+        <MdLanguage className="text-[30px]" />
         </span>);
   }
 
   if (key === "KEYBOARD") {
     return (
       <span className="flex flex-col items-center justify-center leading-none">
-        <MdKeyboardHide className="text-[22px]" />
+        <MdKeyboardHide className="text-[2px]" />
       </span>
     );
   }
@@ -165,10 +165,10 @@ export default function Keyboard({ pressedKeys = new Set(), onKeyPress, labels =
   const isPressed = (key) => pressedKeys.has(key);
 
   return (
-    <div className="rounded-[22px] bg-white p-1.5 md:p-2 shadow-inner">
-      <div className="space-y-1.5">
+    <div className="rounded-[35px] bg-white p-2.5 md:p-1 shadow-inner">
+      <div className="space-y-3">
         {rows.map((row, rowIndex) => (
-          <div key={`row-${rowIndex}`} className="flex items-stretch gap-1.5">
+          <div key={`row-${rowIndex}`} className="flex items-stretch gap-2.5">
             {row.map((key) => {
               const label = resolveLabel(key);
               const special = isSpecialKey(key);
@@ -182,7 +182,7 @@ export default function Keyboard({ pressedKeys = new Set(), onKeyPress, labels =
                   onClick={() => emitKey(key)}
                   className={clsx(
                     "h-11 md:h-12 min-w-0 rounded-md transition-colors",
-                    "font-medium text-[22px] leading-none",
+                    "font-medium text-[28px] leading-none",
                     flexSize,
                     (key === "SHIFT1" || key === "SHIFT2") && shiftOn
                       ? "bg-[#426f66] text-white"
