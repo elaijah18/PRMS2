@@ -6,47 +6,82 @@ import ResultCard from '../../components/ResultCard'
 import { SESSION_KEYS } from './utils'
 import bpImg from '../../assets/bp.png'
 import { triageAbnormal, nextPriorityCode } from '../utils/triage'
+import NumPad from '../../components/NumPad'
 
 export default function BP() {
   const nav = useNavigate()
 
   const [systolic, setSystolic] = useState('')
   const [diastolic, setDiastolic] = useState('')
+  const [activeField, setActiveField] = useState('systolic')
   const [value, setValue] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState({ systolic: '', diastolic: '' })
 
   const API_BASE = 'http://localhost:8000'
 
   const handleSubmit = async () => {
     const sys = systolic.trim()
     const dia = diastolic.trim()
+
+    const nextErrors = {
+      systolic: !sys ? 'Systolic value is required.' : '',
+      diastolic: !dia ? 'Diastolic value is required.' : '',
+    }
+    setErrors(nextErrors)
+
     if (!sys || !dia) return
 
     const bpStr = `${sys}/${dia}`
     setValue(bpStr)
 
-    // Persist in session for later steps
     sessionStorage.setItem(SESSION_KEYS?.bp ?? 'bp', bpStr)
     sessionStorage.setItem('step_bp', bpStr)
     sessionStorage.setItem('step_bp_ts', String(Date.now()))
 
-    // Persist to backend - this is the final vital, so mark as complete
     await saveBP(bpStr)
+  }
+
+  const handleNumPadKey = (key) => {
+    const isBackspace = key === 'BACKSPACE' || key === '⌫'
+    const isEnter = key === 'ENTER' || key === 'Enter'
+
+    if (isEnter) {
+      handleSubmit()
+      return
+    }
+
+    if (activeField === 'systolic') {
+      if (isBackspace) {
+        setSystolic((prev) => prev.slice(0, -1))
+        return
+      }
+      if (/^\d$/.test(key) && systolic.length < 3) {
+        setSystolic((prev) => prev + key)
+      }
+      return
+    }
+
+    if (isBackspace) {
+      setDiastolic((prev) => prev.slice(0, -1))
+      return
+    }
+    if (/^\d$/.test(key) && diastolic.length < 3) {
+      setDiastolic((prev) => prev + key)
+    }
   }
 
   const saveBP = async (bpValue) => {
     try {
-      setSaving(true)
-      const patientId = sessionStorage.getItem('patient_id')
+      const patientId = sessionStorage.getItem('patient_id');
       if (!patientId) {
-        console.warn('No patient_id found in session.')
-        return
+        console.warn('No patient_id found in session.');
+        return;
       }
 
-      // Get the consolidated vital record ID from previous steps
-      const currentVitalId = sessionStorage.getItem('current_vital_id')
+      const currentVitalId = sessionStorage.getItem('current_vital_id');
 
-      const res = await fetch(`${API_BASE}/receive-vitals/`, {
+      const response = await fetch('http://localhost:8000/receive-vitals/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -54,32 +89,32 @@ export default function BP() {
           patient_id: patientId,
           blood_pressure: bpValue,
           id: currentVitalId || null,
-          complete: true, 
         }),
-      })
+      });
 
-      const result = await res.json().catch(() => ({}))
-      
-      if (!res.ok) {
-        console.error('Save BP failed:', result)
-        return
+      const result = await response.json();
+
+      if (response.ok) {
+        console.log('Blood pressure saved:', result);
+
+        if (result?.data?.id) {
+          sessionStorage.setItem('current_vital_id', result.data.id);
+        }
+      } else {
+        console.error('Failed to save blood pressure:', result);
       }
 
-      console.log('Blood pressure saved:', result)
-      
-      // Store the vital_id if returned
-      if (result?.data?.id) {
-        sessionStorage.setItem('current_vital_id', result.data.id)
-      }
     } catch (err) {
-      console.error('Error saving blood pressure:', err)
-    } finally {
-      setSaving(false)
+      console.error('Error saving blood pressure:', err);
     }
-  }
+  };
 
   const handleComplete = () => {
-    // Gather any other vitals already in session for triage
+    // ── BP is the LAST step. Clear current_vital_id so the next patient
+    //    starts a completely fresh VitalSigns row. ──────────────────────
+    sessionStorage.removeItem('current_vital_id');
+
+    // Gather vitals for triage
     const vitals = {
       hr: Number(sessionStorage.getItem('step_hr')) || 0,
       bp: sessionStorage.getItem('step_bp') || sessionStorage.getItem('bp') || '—',
@@ -92,11 +127,9 @@ export default function BP() {
       sessionStorage.setItem('priority', 'PRIORITY')
       sessionStorage.setItem('priority_code', nextPriorityCode())
       sessionStorage.setItem('priority_reasons', JSON.stringify(triage.reasons || []))
-      // show an alert or notification here if desired
-      // alert(`⚠️ Abnormal vitals detected: ${triage.reasons.join(', ')}`)
     }
 
-    nav('/vitals') // go to summary/print page
+    nav('/vitals')
   }
 
   return (
@@ -119,20 +152,49 @@ export default function BP() {
           </div>
 
           <div className="mt-8 flex justify-center gap-4">
-            <input
-              type="number"
-              placeholder="Systolic (e.g., 120)"
-              className="border rounded-xl px-4 py-3 shadow-sm text-center w-40"
-              value={systolic}
-              onChange={(e) => setSystolic(e.target.value)}
-            />
-            <input
-              type="number"
-              placeholder="Diastolic (e.g., 80)"
-              className="border rounded-xl px-4 py-3 shadow-sm text-center w-40"
-              value={diastolic}
-              onChange={(e) => setDiastolic(e.target.value)}
-            />
+            <div className="w-40">
+              <input
+                type="number"
+                placeholder="Systolic (e.g., 120)"
+                className="border rounded-xl px-4 py-3 shadow-sm text-center w-full"
+                value={systolic}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setSystolic(next)
+                  if (next.trim()) {
+                    setErrors((prev) => ({ ...prev, systolic: '' }))
+                  }
+                }}
+                onFocus={() => setActiveField('systolic')}
+              />
+              {errors.systolic && (
+                <p className="mt-1 text-xs text-red-600 text-left">{errors.systolic}</p>
+              )}
+            </div>
+
+            <div className="w-40">
+              <input
+                type="number"
+                placeholder="Diastolic (e.g., 80)"
+                className="border rounded-xl px-4 py-3 shadow-sm text-center w-full"
+                value={diastolic}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setDiastolic(next)
+                  if (next.trim()) {
+                    setErrors((prev) => ({ ...prev, diastolic: '' }))
+                  }
+                }}
+                onFocus={() => setActiveField('diastolic')}
+              />
+              {errors.diastolic && (
+                <p className="mt-1 text-xs text-red-600 text-left">{errors.diastolic}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-8 flex justify-center">
+            <NumPad onKey={handleNumPadKey} />
           </div>
 
           <div className="mt-8 text-center">

@@ -45,7 +45,7 @@ export default function Login() {
 
         {/* Staff card */}
         <button
-          onClick={() => nav('/login-auth', { state: { role: 'staff' } })}
+          onClick={() => nav('/pin-verification')}
           className="group rounded-3xl bg-[#6ec1af] hover:bg-emerald-800/70 transition-all 
                      border border-emerald-500/60 shadow-lg hover:shadow-xl 
                      overflow-hidden px-5 py-8"

@@ -9,22 +9,31 @@ from django.db import transaction
 
 #ADDED STAFF USERNAME
 class HCStaff(models.Model):
-    name = models.CharField(max_length=50)
+    staff_id = models.AutoField(primary_key=True)
+    first_name = models.CharField(max_length=50)
+    middle_name = models.CharField(max_length=50, null=True, blank=True)
+    last_name = models.CharField(max_length=50)
     username = models.CharField(max_length=20, unique=True)
-    staff_pin = models.CharField(max_length=255, unique=True)
+    pin = models.CharField(max_length=255, unique=True)
+    phone = models.CharField(max_length=11, default='N/A')
+    email = models.EmailField(max_length=254, default='N/A')
+    position = models.CharField(max_length=50, default='N/A')
+    department = models.CharField(max_length=50, default='N/A')
+    fingerprint_id = models.CharField(max_length=10, null=True, blank=True, unique=True)  # ← ADD THIS
+
     
     def set_pin(self, raw_pin):
         """Hashes and sets the staff PIN."""
-        self.staff_pin = make_password(raw_pin)
+        self.pin = make_password(raw_pin)
 
     def check_pin(self, raw_pin):
         """Verifies a raw PIN against the stored hash."""
-        return check_password(raw_pin, self.staff_pin)
+        return check_password(raw_pin, self.pin)
 
     def save(self, *args, **kwargs):
         # Hash the PIN if it’s not already hashed
-        if self.staff_pin and not self.staff_pin.startswith('pbkdf2_'):
-            self.staff_pin = make_password(self.staff_pin)
+        if self.pin and not self.pin.startswith('pbkdf2_'):
+            self.pin = make_password(self.pin)
         super().save(*args, **kwargs)
 
 class Patient(models.Model):    
@@ -85,9 +94,10 @@ class Patient(models.Model):
         return self.age is not None and self.age >= 65
 
 class VitalSigns(models.Model):
+    vitals_id = models.AutoField(primary_key=True)
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='vital_signs')
     date_time_recorded = models.DateTimeField(auto_now_add=True)
-    pulse_rate = models.IntegerField(null=True, blank=True)  # bpm
+    heart_rate = models.IntegerField(null=True, blank=True)  # bpm
     temperature = models.FloatField(null=True, blank=True)  # °C
     oxygen_saturation = models.FloatField(null=True, blank=True)  # %
     blood_pressure = models.CharField(null=True, blank=True, max_length=7)  # mmHg
@@ -146,47 +156,45 @@ class QueueEntry(models.Model):
             is_priority = self.priority_status in ['CRITICAL', 'HIGH', 'MEDIUM']
             
             if is_priority:
-                # Priority patients: 300-999
-                # Find the highest priority queue number today (including completed ones)
+                # Priority patients: 001-300
                 highest_priority = QueueEntry.objects.filter(
                     entered_at__date=today,
-                    queue_number__gte='300',
-                    queue_number__lte='999'
-                ).order_by('-queue_number').first()
-                
+                    queue_number__regex=r'^\d+$',
+                ).extra(
+                    where=["CAST(queue_number AS UNSIGNED) BETWEEN 1 AND 300"]
+                ).order_by('-entered_at').first()
+
                 if highest_priority and highest_priority.queue_number:
                     try:
                         next_num = int(highest_priority.queue_number) + 1
-                        # If we've exceeded 999, wrap to 300
-                        if next_num > 999:
-                            next_num = 300
-                    except ValueError:
-                        next_num = 300
-                else:
-                    next_num = 300
-                
-                self.queue_number = str(next_num)
-            else:
-                # Normal patients: 001-299
-                # Find the highest normal queue number today (including completed ones)
-                highest_normal = QueueEntry.objects.filter(
-                    entered_at__date=today,
-                    queue_number__gte='001',
-                    queue_number__lte='299'
-                ).order_by('-queue_number').first()
-                
-                if highest_normal and highest_normal.queue_number:
-                    try:
-                        next_num = int(highest_normal.queue_number) + 1
-                        # If we've exceeded 299, wrap to 001
-                        if next_num > 299:
+                        if next_num > 300:
                             next_num = 1
                     except ValueError:
                         next_num = 1
                 else:
                     next_num = 1
-                
+
                 self.queue_number = f"{next_num:03d}"
+            else:
+                # Normal patients: 301-999
+                highest_normal = QueueEntry.objects.filter(
+                    entered_at__date=today,
+                    queue_number__regex=r'^\d+$',
+                ).extra(
+                    where=["CAST(queue_number AS UNSIGNED) BETWEEN 301 AND 999"]
+                ).order_by('-entered_at').first()
+
+                if highest_normal and highest_normal.queue_number:
+                    try:
+                        next_num = int(highest_normal.queue_number) + 1
+                        if next_num > 999:
+                            next_num = 301
+                    except ValueError:
+                        next_num = 301
+                else:
+                    next_num = 301
+
+                self.queue_number = str(next_num)
         
         super().save(*args, **kwargs)
     
@@ -227,7 +235,7 @@ class ArchivedPatient(models.Model):
 class ArchivedVitalSigns(models.Model):
     patient = models.ForeignKey(ArchivedPatient, on_delete=models.CASCADE, related_name='vital_signs')
     date_time_recorded = models.DateTimeField()
-    pulse_rate = models.IntegerField(null=True, blank=True)
+    heart_rate = models.IntegerField(null=True, blank=True)
     temperature = models.FloatField(null=True, blank=True)
     oxygen_saturation = models.FloatField(null=True, blank=True)
     blood_pressure = models.CharField(null=True, blank=True, max_length=7)
@@ -292,7 +300,7 @@ def archive_patient(patient_id, staff=None, reason=None):
             ArchivedVitalSigns.objects.create(
                 patient=archived_patient,
                 date_time_recorded=vital.date_time_recorded,
-                pulse_rate=vital.pulse_rate,
+                heart_rate=vital.heart_rate,
                 temperature=vital.temperature,
                 oxygen_saturation=vital.oxygen_saturation,
                 blood_pressure=vital.blood_pressure,
@@ -343,8 +351,8 @@ def restore_patient(patient_id):
             last_name=archived_patient.last_name,
             sex=archived_patient.sex,
             contact=archived_patient.contact,
-            street=patient.street,
-            barangay=patient.barangay,
+            street=archived_patient.street, 
+            barangay=archived_patient.barangay,
             username=archived_patient.username,
             birthdate=archived_patient.birthdate,
             pin=archived_patient.pin,
@@ -358,7 +366,7 @@ def restore_patient(patient_id):
             VitalSigns.objects.create(
                 patient=patient,
                 date_time_recorded=vital.date_time_recorded,
-                pulse_rate=vital.pulse_rate,
+                heart_rate=vital.heart_rate,
                 temperature=vital.temperature,
                 oxygen_saturation=vital.oxygen_saturation,
                 blood_pressure=vital.blood_pressure,

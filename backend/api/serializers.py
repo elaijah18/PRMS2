@@ -6,15 +6,23 @@ from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 
 class PatientSerializer(serializers.ModelSerializer):
-    age = serializers.IntegerField(read_only=True)
+    age = serializers.SerializerMethodField()
     address = serializers.SerializerMethodField()
     
     class Meta:
         model = Patient
-        fields = '__all__'
-        read_only_fields = ('patient_id',)
+        fields = [
+            'patient_id', 'first_name', 'middle_name', 'last_name',
+            'sex', 'contact', 'street', 'barangay', 'address',
+            'username', 'birthdate', 'pin', 'fingerprint_id',
+            'last_visit', 'age',
+        ]
+        read_only_fields = ('patient_id', 'age')
     
     # Address (may be street + barangay, can be changed)
+    def get_age(self, obj):
+        return obj.age  # calls the @property on the model
+    
     def get_address(self, obj):
         """Compose address from street and barangay"""
         parts = []
@@ -120,42 +128,27 @@ class QueueEntrySerializer(serializers.ModelSerializer):
             'served_at',  # Include served_at
             'latest_vitals'
         ] 
-    
+
     def get_latest_vitals(self, obj):
-        """Get the latest vital signs for the patient in this queue entry"""
-        from django.db.models import Max
-        
-        # Get today's date range
-        today = timezone.now().date()
-        today_start = timezone.make_aware(
-            timezone.datetime.combine(today, timezone.datetime.min.time())
-        )
-        today_end = timezone.make_aware(
-            timezone.datetime.combine(today, timezone.datetime.max.time())
-        )
-        
-        # Get latest vitals from today
-        latest_vital = VitalSigns.objects.filter(
-            patient=obj.patient,
-            date_time_recorded__range=(today_start, today_end)
-        ).order_by('-date_time_recorded').first()
-        
-        if not latest_vital:
+        try:
+            latest = VitalSigns.objects.filter(
+                patient=obj.patient
+            ).order_by('-date_time_recorded').first()
+            if not latest:
+                return None
+            bmi = None
+            if latest.height and latest.weight and latest.height > 0:
+                h = latest.height / 100
+                bmi = round(latest.weight / (h * h), 1)
+            return {
+                'heart_rate':        latest.heart_rate,
+                'temperature':       latest.temperature,
+                'oxygen_saturation': latest.oxygen_saturation,
+                'blood_pressure':    latest.blood_pressure,
+                'height':            latest.height,
+                'weight':            latest.weight,
+                'bmi':               bmi,
+            }
+        except Exception:
             return None
-        
-        # Calculate BMI
-        bmi_value = None
-        if latest_vital.height and latest_vital.weight:
-            height_m = latest_vital.height / 100
-            bmi_value = round(latest_vital.weight / (height_m * height_m), 1)
-        
-        return {
-            'heart_rate': latest_vital.heart_rate,
-            'temperature': latest_vital.temperature,
-            'oxygen_saturation': latest_vital.oxygen_saturation,
-            'blood_pressure': latest_vital.blood_pressure,
-            'height': latest_vital.height,
-            'weight': latest_vital.weight,
-            'bmi': bmi_value
-        }
     

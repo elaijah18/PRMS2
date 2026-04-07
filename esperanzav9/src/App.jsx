@@ -1,13 +1,6 @@
-// This file sets up the main application structure with routing and a consistent layout.
-
-import React from 'react'
 import { Routes, Route } from 'react-router-dom'
-import Navbar from './components/Navbar'
-import Footer from './components/Footer'
+import { useEffect } from 'react'
 import Home from './pages/Home'
-import Services from './pages/Services'
-import About from './pages/About'
-import Contact from './pages/Contact'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import PatientPortal from './pages/PatientPortal'
@@ -16,11 +9,11 @@ import Weight from './pages/vitals/Weight'
 import Height from './pages/vitals/Height'
 import Pulse from './pages/vitals/Pulse'
 import Temperature from './pages/vitals/Temperature'
-import BP from "./pages/vitals/BP";
+import BP from "./pages/vitals/BP"
 import Records from './pages/Records'
 import Staff from './pages/Staff'
-import PatientLogin from './pages/PatientLogin'   
-import LoginAuth from './pages/LoginAuth'         
+import PatientLogin from './pages/PatientLogin'
+import LoginAuth from './pages/LoginAuth'
 import bgImage from './assets/background.png'
 import PatientRecords from './pages/PatientRecords'
 import QueueManagement from './pages/QueueManagement'
@@ -28,23 +21,52 @@ import Reports from './pages/Reports'
 import PrivacyNotice from './components/PrivacyNotice'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsofService from './pages/TermsofService'
+import StaffLogin from './pages/StaffLogin'
+import StaffRegister from './pages/StaffRegister'
+import PINVerification from './pages/PINVerification'
+import ArchivedPatients from './pages/ArchivedPatients'
+
+const API_URL = 'http://localhost:8000'
 
 export default function App() {
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/queue/check-next-button/`, {
+          credentials: 'include',
+        })
+        if (!res.ok) return
+        const data = await res.json()
+
+        // Only fire if button was actually pressed AND sensor is not busy
+        // sensor_busy means fingerprint/vitals is in progress — queue will
+        // auto-advance via _pending_btn_next once the sensor session ends
+        if (data.pressed && !data.sensor_busy) {
+          window.dispatchEvent(new CustomEvent('hardware-next'))
+        }
+      } catch {
+        // silent
+      }
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <div style={{ backgroundImage: `url(${bgImage})` }} className="min-h-screen bg-cover bg-fixed bg-center">
-      <Navbar />
       <main className="min-h-[calc(100vh-4rem)] bg-white/70">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsofService />} />
-          <Route path="/services" element={<Services />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/patient-login" element={<PatientLogin />} /> 
-          <Route path="/login-auth" element={<LoginAuth />} />       
+          <Route path="/patient-login" element={<PatientLogin />} />
+          <Route path="/pin-verification" element={<PINVerification />} />
+          <Route path="/staff-login" element={<StaffLogin />} />
+          <Route path="/login-auth" element={<LoginAuth />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/staff-register" element={<StaffRegister />} />
           <Route path="/portal" element={<PatientPortal />} />
           <Route path="/vitals" element={<VitalSigns />} />
           <Route path="/vitals/weight" element={<Weight />} />
@@ -55,6 +77,7 @@ export default function App() {
           <Route path="/records/:username?" element={<Records />} />
           <Route path="/staff" element={<Staff />} />
           <Route path="/staff/patient-records/:patientId?" element={<PatientRecords />} />
+          <Route path="/staff/archived-patients" element={<ArchivedPatients />} />
           <Route path="/staff/QueueManagement" element={<QueueManagement />} />
           <Route path="/staff/reports" element={<Reports />} />
         </Routes>

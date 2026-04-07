@@ -400,6 +400,18 @@ export default function PatientRecords() {
       </div>
 
       <Title>Patient Records</Title>
+      <div className="mt-3 flex justify-center">
+        <button
+          onClick={() => nav('/staff/archived-patients')}
+          className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold hover:opacity-90"
+          style={{ borderColor: BRAND.border, color: BRAND.text, background: BRAND.bg }}
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8M10 12h4" />
+          </svg>
+          View Archived Patients
+        </button>
+      </div>
 
       <div className="mt-6 flex gap-3">
         <input
@@ -433,6 +445,7 @@ export default function PatientRecords() {
                     </h3>
                     <p className="text-sm" style={{ color: BRAND.text }}>
                       Patient ID: <span className="font-semibold">{p.patient_id || '—'}</span> • 
+                      Age: <span className="font-semibold">{p.age ?? '—'}</span> •
                       Contact: <span className="font-semibold">{p.contact || '—'}</span> • 
                       Address: <span className="font-semibold">{p.address || '—'}</span>
                     </p>
@@ -460,7 +473,7 @@ export default function PatientRecords() {
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
                     <div className="text-sm opacity-90">Pulse Rate</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
-                      {p.latest_vitals?.pulse_rate ?? '—'}
+                      {p.latest_vitals?.heart_rate ?? '—'}
                     </div>
                     <div className="mt-1 text-xs opacity-80">BPM</div>
                   </div>
@@ -474,7 +487,7 @@ export default function PatientRecords() {
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
                     <div className="text-sm opacity-90">SpO₂</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
-                      {p.latest_vitals?.oxygen_saturation ?? '—'}
+                      {p.latest_vitals?.spo2 ?? p.latest_vitals?.oxygen_saturation ?? '—'}
                     </div>
                     <div className="mt-1 text-xs opacity-80">%</div>
                   </div>
@@ -608,6 +621,19 @@ export default function PatientRecords() {
                           />
                         </td>
                       </tr>
+                      <tr className="border-b" style={{ borderColor: BRAND.border }}>
+                        <th className="px-4 py-3 text-left">Age</th>
+                        <td className="px-4 py-3">
+                          <input
+                            value={currentPatient.age ?? '—'}
+                            disabled
+                            className="w-full rounded-lg border px-3 py-2 bg-slate-100"
+                            style={{ borderColor: BRAND.border }}
+                          />
+                        </td>
+                        <th className="px-4 py-3 text-left"></th>
+                        <td className="px-4 py-3"></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -616,7 +642,7 @@ export default function PatientRecords() {
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
                     <div className="text-sm opacity-90">Pulse Rate</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
-                      {latestVitals?.pulse_rate ?? '—'}
+                      {latestVitals?.heart_rate ?? '—'}
                     </div>
                     <div className="mt-1 text-xs opacity-80">BPM</div>
                   </div>
@@ -630,7 +656,7 @@ export default function PatientRecords() {
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
                     <div className="text-sm opacity-90">SpO₂</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
-                      {latestVitals?.oxygen_saturation ?? '—'}
+                      {latestVitals?.spo2 ?? latestVitals?.oxygen_saturation ?? '—'}
                     </div>
                     <div className="mt-1 text-xs opacity-80">%</div>
                   </div>
@@ -704,8 +730,8 @@ export default function PatientRecords() {
                           <td className="px-4 py-3">{r.date}</td>
                           <td className="px-4 py-3">{r.height ?? '—'}</td>
                           <td className="px-4 py-3">{r.weight ?? '—'}</td>
-                          <td className="px-4 py-3">{r.pulse_rate ? `${r.pulse_rate} bpm` : '—'}</td>
-                          <td className="px-4 py-3">{r.oxygen_saturation ?? '—'}</td>
+                          <td className="px-4 py-3">{r.heart_rate ? `${r.heart_rate} bpm` : '—'}</td>
+                          <td className="px-4 py-3">{r.spo2 ?? r.oxygen_saturation ?? '—'}</td>
                           <td className="px-4 py-3">{r.temperature ?? '—'}</td>
                           <td className="px-4 py-3">{r.bmi ?? '—'}</td>
                           <td className="px-4 py-3">{r.blood_pressure ?? '—'}</td>
