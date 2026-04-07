@@ -32,14 +32,14 @@ echo.
 
 echo [1/3] Starting Backend Server (hidden)...
 echo        Django development server on http://localhost:%BACKEND_PORT%
-start "Esperanza Backend" /B cmd /c "cd backend && python -u run_backend.py > ..\logs\backend.log 2>&1"
+start "Esperanza Backend" /B cmd /k "cd backend && python -u run_backend.py > ..\logs\backend.log 2>&1"
 
 timeout /t 6 /nobreak
 
 echo.
 echo [2/3] Starting Frontend Server (hidden)...
 echo        HTTP server on http://localhost:%FRONTEND_PORT%
-start "Esperanza Frontend" /B cmd /c "cd esperanzav9 && python -u run_frontend_server.py > ..\logs\frontend.log 2>&1"
+start "Esperanza Frontend" /B cmd /k "cd esperanzav9 && python -u run_frontend_server.py > ..\logs\frontend.log 2>&1"
 
 timeout /t 4 /nobreak
 

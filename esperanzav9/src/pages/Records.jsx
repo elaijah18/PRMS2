@@ -13,6 +13,7 @@ import bmiIcon from '../assets/body-mass-index.png'
 import printIcon from '../assets/printer-green.png'
 import logoutIcon from '../assets/logout-green.png'
 import Popup from '../components/ErrorPopup'
+import BackIcon from '../assets/back.png'
 
 export default function Records() {
   const [profile, setProfile] = useState(null)
@@ -582,6 +583,15 @@ export default function Records() {
           #print-root .mb6 { margin-bottom: 6px; }
         `}
       </style>
+
+      {/* Back button - KAPAG NAMALI SYSTEM DELETE*/}    
+      <button
+        onClick={() => nav(-1)}
+        className="absolute left-4 top-4 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-[#406E65] shadow hover:bg-slate-50"
+      >
+        <img src={BackIcon} alt="Back" className="h-4 w-4 object-contain" />
+        <span className="font-medium">Back</span>
+      </button>
 
       <button
         onClick={() => setShowLogoutConfirm(true)}

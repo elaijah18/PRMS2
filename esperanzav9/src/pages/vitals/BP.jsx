@@ -16,12 +16,20 @@ export default function BP() {
   const [activeField, setActiveField] = useState('systolic')
   const [value, setValue] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState({ systolic: '', diastolic: '' })
 
   const API_BASE = 'http://localhost:8000'
 
   const handleSubmit = async () => {
     const sys = systolic.trim()
     const dia = diastolic.trim()
+
+    const nextErrors = {
+      systolic: !sys ? 'Systolic value is required.' : '',
+      diastolic: !dia ? 'Diastolic value is required.' : '',
+    }
+    setErrors(nextErrors)
+
     if (!sys || !dia) return
 
     const bpStr = `${sys}/${dia}`
@@ -144,25 +152,48 @@ export default function BP() {
           </div>
 
           <div className="mt-8 flex justify-center gap-4">
-            <input
-              type="number"
-              placeholder="Systolic (e.g., 120)"
-              className="border rounded-xl px-4 py-3 shadow-sm text-center w-40"
-              value={systolic}
-              onChange={(e) => setSystolic(e.target.value)}
-              onFocus={() => setActiveField('systolic')}
-            />
-            <input
-              type="number"
-              placeholder="Diastolic (e.g., 80)"
-              className="border rounded-xl px-4 py-3 shadow-sm text-center w-40"
-              value={diastolic}
-              onChange={(e) => setDiastolic(e.target.value)}
-              onFocus={() => setActiveField('diastolic')}
-            />
+            <div className="w-40">
+              <input
+                type="number"
+                placeholder="Systolic (e.g., 120)"
+                className="border rounded-xl px-4 py-3 shadow-sm text-center w-full"
+                value={systolic}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setSystolic(next)
+                  if (next.trim()) {
+                    setErrors((prev) => ({ ...prev, systolic: '' }))
+                  }
+                }}
+                onFocus={() => setActiveField('systolic')}
+              />
+              {errors.systolic && (
+                <p className="mt-1 text-xs text-red-600 text-left">{errors.systolic}</p>
+              )}
+            </div>
+
+            <div className="w-40">
+              <input
+                type="number"
+                placeholder="Diastolic (e.g., 80)"
+                className="border rounded-xl px-4 py-3 shadow-sm text-center w-full"
+                value={diastolic}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setDiastolic(next)
+                  if (next.trim()) {
+                    setErrors((prev) => ({ ...prev, diastolic: '' }))
+                  }
+                }}
+                onFocus={() => setActiveField('diastolic')}
+              />
+              {errors.diastolic && (
+                <p className="mt-1 text-xs text-red-600 text-left">{errors.diastolic}</p>
+              )}
+            </div>
           </div>
 
-          <div className="mt-6 flex justify-center">
+          <div className="mt-8 flex justify-center">
             <NumPad onKey={handleNumPadKey} />
           </div>
 
