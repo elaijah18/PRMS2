@@ -6,6 +6,7 @@ import backIcon from '../assets/arrow.png'
 import accIcon from '../assets/account.png'
 import historyIcon from '../assets/history.png'
 import Popup from '../components/ErrorPopup'
+import Keyboard from '../components/Keyboard'
 
 const BRAND = {
   bg: '#DCEBE8',
@@ -29,6 +30,7 @@ export default function PatientRecords() {
   const [bpInput, setBpInput] = useState('')
   const [popupMsg, setPopupMsg] = useState('')
   const [errors, setErrors] = useState({})
+  const [keyboardTarget, setKeyboardTarget] = useState(null)
 
 
   const constructName = (patient) => {
@@ -252,6 +254,92 @@ export default function PatientRecords() {
   const handleClear = () => {
     setQuery('')
     setSearchParams({})
+    setKeyboardTarget(null)
+  }
+
+  const clearKeyboard = () => {
+    setKeyboardTarget(null)
+  }
+
+  const onKeyboardPress = (key) => {
+    if (!keyboardTarget) return
+
+    const isSearchField = keyboardTarget.type === 'search'
+    const field = keyboardTarget.field
+    const isTextField = ['first_name', 'middle_name', 'last_name', 'address'].includes(field)
+    const isNumericField = field === 'contact' || field === 'bpInput'
+
+    if (key === 'BACKSPACE') {
+      if (isSearchField) {
+        setQuery((value) => value.slice(0, -1))
+      } else if (field === 'bpInput') {
+        setBpInput((value) => value.slice(0, -1))
+      } else if (field && currentPatient) {
+        setCurrentPatient((patient) => ({
+          ...patient,
+          [field]: (patient?.[field] || '').toString().slice(0, -1),
+        }))
+      }
+      return
+    }
+
+    if (key === 'SPACE') {
+      if (isSearchField) {
+        setQuery((value) => value + ' ')
+      } else if (isTextField && currentPatient) {
+        setCurrentPatient((patient) => ({
+          ...patient,
+          [field]: `${patient?.[field] || ''} `,
+        }))
+      }
+      return
+    }
+
+    if (key === 'ENTER2') {
+      if (isSearchField) {
+        handleSearch()
+      } else if (field === 'bpInput') {
+        saveBp()
+      }
+      setKeyboardTarget(null)
+      return
+    }
+
+    if (key === 'KEYBOARD') {
+      clearKeyboard()
+      return
+    }
+
+    if (isSearchField) {
+      if (/^[A-Za-z0-9]$/.test(key) || /^[,./?-]$/.test(key)) {
+        setQuery((value) => value + key)
+      }
+      return
+    }
+
+    if (field === 'bpInput') {
+      if (/^[0-9/]$/.test(key)) {
+        setBpInput((value) => `${value}${key}`.replace(/[^\d/]/g, ''))
+      }
+      return
+    }
+
+    if (isNumericField) {
+      if (/^[0-9]$/.test(key) && currentPatient) {
+        setCurrentPatient((patient) => ({
+          ...patient,
+          [field]: `${patient?.[field] || ''}${key}`,
+        }))
+      }
+      return
+    }
+
+    if (isTextField && currentPatient && (/^[A-Za-z0-9]$/.test(key) || /^[,.'-]$/.test(key))) {
+      setCurrentPatient((patient) => ({
+        ...patient,
+        [field]: `${patient?.[field] || ''}${key}`,
+      }))
+    }
   }
 
   const saveBp = async () => {
@@ -302,6 +390,7 @@ export default function PatientRecords() {
     
     setEditing(false)
     setCurrentPatient(null)
+    clearKeyboard()
     const currentSearch = searchParams.get('q')
     if (currentSearch) {
       nav(`/staff/patient-records?q=${encodeURIComponent(currentSearch)}`, { replace: true })
@@ -324,6 +413,7 @@ export default function PatientRecords() {
     
     setCurrentPatient(patientToEdit)
     setEditing(true)
+    clearKeyboard()
     
     setLatestVitals(patient.latest_vitals || null)
     
@@ -347,6 +437,7 @@ export default function PatientRecords() {
   const cancelArchive = () => {
     setShowArchiveModal(false)
     setPatientToArchive(null)
+    clearKeyboard()
   }
 
   const confirmArchive = async () => {
@@ -371,6 +462,7 @@ export default function PatientRecords() {
       
       setShowArchiveModal(false)
       setPatientToArchive(null)
+      clearKeyboard()
       
       const currentSearch = searchParams.get('q') || ''
       fetchPatients(currentSearch)
@@ -395,7 +487,7 @@ export default function PatientRecords() {
           className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[#406E65] hover:bg-slate-50 shadow"
         >
           <img src={backIcon} alt="Back" className="h-4 w-4 object-contain" />
-          <span className="text-sm font-medium">Back</span>
+          <span className="text-lg font-medium">Back</span>
         </button>
       </div>
 
@@ -403,7 +495,7 @@ export default function PatientRecords() {
       <div className="mt-3 flex justify-center">
         <button
           onClick={() => nav('/staff/archived-patients')}
-          className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold hover:opacity-90"
+          className="flex items-center gap-2 rounded-xl border px-4 py-2 text-lg font-semibold hover:opacity-90"
           style={{ borderColor: BRAND.border, color: BRAND.text, background: BRAND.bg }}
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -413,20 +505,25 @@ export default function PatientRecords() {
         </button>
       </div>
 
-      <div className="mt-6 flex gap-3">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          placeholder="Search by Name or Patient ID…"
-          className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
-        />
-        <button
-          onClick={handleClear}
-          className="rounded-xl border border-slate-300 px-4 py-2.5 hover:bg-slate-50"
-        >
-          Clear
-        </button>
+      <div className="mt-6 mx-auto max-w-3xl">
+        <div className="flex gap-3">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setKeyboardTarget({ type: 'search' })}
+            onBlur={clearKeyboard}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            placeholder="Search by Name or Patient ID…"
+            className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
+          />
+          <button
+            onClick={handleClear}
+            className="rounded-xl border border-slate-300 px-4 py-2.5 hover:bg-slate-50"
+          >
+            Clear
+          </button>
+        </div>
+
       </div>
 
       <div className="mt-6 space-y-6">
@@ -443,7 +540,7 @@ export default function PatientRecords() {
                     <h3 className="text-2xl font-extrabold" style={{ color: BRAND.text }}>
                       {constructName(p)}
                     </h3>
-                    <p className="text-sm" style={{ color: BRAND.text }}>
+                    <p className="text-lg" style={{ color: BRAND.text }}>
                       Patient ID: <span className="font-semibold">{p.patient_id || '—'}</span> • 
                       Age: <span className="font-semibold">{p.age ?? '—'}</span> •
                       Contact: <span className="font-semibold">{p.contact || '—'}</span> • 
@@ -471,21 +568,21 @@ export default function PatientRecords() {
                 
                 <div className="mt-6 grid gap-4 md:grid-cols-3">
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
-                    <div className="text-sm opacity-90">Pulse Rate</div>
+                    <div className="text-lg opacity-90">Pulse Rate</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
                       {p.latest_vitals?.heart_rate ?? '—'}
                     </div>
                     <div className="mt-1 text-xs opacity-80">BPM</div>
                   </div>
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
-                    <div className="text-sm opacity-90">Temperature</div>
+                    <div className="text-lg opacity-90">Temperature</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
                       {p.latest_vitals?.temperature ?? '—'}
                     </div>
                     <div className="mt-1 text-xs opacity-80">°C</div>
                   </div>
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
-                    <div className="text-sm opacity-90">SpO₂</div>
+                    <div className="text-lg opacity-90">SpO₂</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
                       {p.latest_vitals?.spo2 ?? p.latest_vitals?.oxygen_saturation ?? '—'}
                     </div>
@@ -501,7 +598,7 @@ export default function PatientRecords() {
                   className="mt-3 rounded-2xl overflow-hidden border relative"
                   style={{ borderColor: BRAND.border }}
                 >
-                  <table className="min-w-full text-sm" style={{ background: BRAND.bg, color: BRAND.text }}>
+                  <table className="min-w-full text-lg" style={{ background: BRAND.bg, color: BRAND.text }}>
                     <tbody>
                       <tr className="border-b" style={{ borderColor: BRAND.border }}>
                         <th className="px-4 py-3 text-left w-52">First Name</th>
@@ -511,6 +608,8 @@ export default function PatientRecords() {
                             onChange={(e) =>
                               setCurrentPatient({ ...currentPatient, first_name: e.target.value })
                             }
+                            onFocus={() => setKeyboardTarget({ type: 'edit', field: 'first_name' })}
+                            onBlur={clearKeyboard}
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
                             autoCapitalize="words"
@@ -525,6 +624,8 @@ export default function PatientRecords() {
                             onChange={(e) =>
                               setCurrentPatient({ ...currentPatient, middle_name: e.target.value })
                             }
+                            onFocus={() => setKeyboardTarget({ type: 'edit', field: 'middle_name' })}
+                            onBlur={clearKeyboard}
                             maxLength={50}
                             placeholder="Optional"
                             className="w-full rounded-lg border px-3 py-2 bg-white"
@@ -543,6 +644,8 @@ export default function PatientRecords() {
                             onChange={(e) =>
                               setCurrentPatient({ ...currentPatient, last_name: e.target.value })
                             }
+                            onFocus={() => setKeyboardTarget({ type: 'edit', field: 'last_name' })}
+                            onBlur={clearKeyboard}
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
                             autoCapitalize="words"
@@ -578,6 +681,8 @@ export default function PatientRecords() {
                                   address: e.target.value,
                                 })
                               }
+                              onFocus={() => setKeyboardTarget({ type: 'edit', field: 'address' })}
+                              onBlur={clearKeyboard}
                               className="w-full rounded-lg border px-3 py-2 bg-white"
                               style={{ borderColor: BRAND.border }}
                             />
@@ -606,6 +711,8 @@ export default function PatientRecords() {
                             onChange={(e) =>
                               setCurrentPatient({ ...currentPatient, contact: e.target.value })
                             }
+                            onFocus={() => setKeyboardTarget({ type: 'edit', field: 'contact' })}
+                            onBlur={clearKeyboard}
                             className="w-full rounded-lg border px-3 py-2 bg-white"
                             style={{ borderColor: BRAND.border }}
                           />
@@ -640,21 +747,21 @@ export default function PatientRecords() {
 
                 <div className="mt-6 grid gap-4 md:grid-cols-3">
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
-                    <div className="text-sm opacity-90">Pulse Rate</div>
+                    <div className="text-lg opacity-90">Pulse Rate</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
                       {latestVitals?.heart_rate ?? '—'}
                     </div>
                     <div className="mt-1 text-xs opacity-80">BPM</div>
                   </div>
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
-                    <div className="text-sm opacity-90">Temperature</div>
+                    <div className="text-lg opacity-90">Temperature</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
                       {latestVitals?.temperature ?? '—'}
                     </div>
                     <div className="mt-1 text-xs opacity-80">°C</div>
                   </div>
                   <div className="rounded-2xl border p-5" style={{ background: BRAND.bg, color: BRAND.text, borderColor: BRAND.border }}>
-                    <div className="text-sm opacity-90">SpO₂</div>
+                    <div className="text-lg opacity-90">SpO₂</div>
                     <div className="mt-2 text-3xl font-extrabold tabular-nums">
                       {latestVitals?.spo2 ?? latestVitals?.oxygen_saturation ?? '—'}
                     </div>
@@ -690,6 +797,8 @@ export default function PatientRecords() {
 
                         setBpInput(value);
                       }}
+                      onFocus={() => setKeyboardTarget({ type: 'edit', field: 'bpInput' })}
+                      onBlur={clearKeyboard}
                       placeholder="e.g. 120/80"
                       className="rounded-lg border px-3 py-2 bg-white flex-1"
                       style={{ borderColor: BRAND.border }}
@@ -711,7 +820,7 @@ export default function PatientRecords() {
                   className="mt-3 rounded-2xl overflow-hidden border relative"
                   style={{ borderColor: BRAND.border }}
                 >
-                  <table className="min-w-full text-sm" style={{ background: BRAND.bg, color: BRAND.text }}>
+                  <table className="min-w-full text-lg" style={{ background: BRAND.bg, color: BRAND.text }}>
                     <thead style={{ background: '#cfe5e1' }}>
                       <tr>
                         <th className="px-4 py-3 text-left">Date</th>
@@ -766,12 +875,18 @@ export default function PatientRecords() {
 
       {/* Results counter */}
       {!loading && patients.length > 0 && (
-        <div className="mt-4 text-sm text-slate-600 text-center">
+        <div className="mt-4 text-lg text-slate-600 text-center">
           Showing <span className="font-semibold">{patients.length}</span>
           {totalCount > 0 && (
             <> out of <span className="font-semibold">{totalCount}</span></>
           )}
           {' '}patient{totalCount === 1 ? '' : 's'}.
+        </div>
+      )}
+
+      {keyboardTarget && (
+        <div className="fixed bottom-4 left-1/2 z-50 w-[95vw] max-w-[42rem] -translate-x-1/2">
+          <Keyboard onKeyPress={onKeyboardPress} mode="letters" />
         </div>
       )}
 
@@ -782,7 +897,7 @@ export default function PatientRecords() {
           <h3 className="text-lg font-bold text-slate-800">
             Archive this patient record?
           </h3>
-          <p className="text-sm text-slate-600 mt-2">
+          <p className="text-lg text-slate-600 mt-2">
             The record will be moved to the archive and can be restored later.
           </p>
           <div className="mt-6 flex justify-center gap-3">

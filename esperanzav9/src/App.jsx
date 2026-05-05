@@ -54,8 +54,8 @@ export default function App() {
   }, [])
 
   return (
-    <div style={{ backgroundImage: `url(${bgImage})` }} className="min-h-screen bg-cover bg-fixed bg-center">
-      <main className="min-h-[calc(100vh-4rem)] bg-white/70">
+    <div style={{ backgroundImage: `url(${bgImage})` }} className="min-h-screen bg-cover bg-fixed bg-center overflow-hidden" >
+      <main className="min-h-[calc(120vh-4rem)] bg-white/40">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />

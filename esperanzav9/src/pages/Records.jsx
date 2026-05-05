@@ -349,13 +349,13 @@ export default function Records() {
 
   // ---------- UI Components ----------
   const Card = ({ label, icon, value, unit, alt }) => (
-    <div className="rounded-2xl border bg-white p-5">
-      <div className="flex items-center justify-between text-sm text-[#406E65]">
+    <div className="rounded-2xl border bg-white p-8">
+      <div className="flex items-center justify-between text-base text-[#406E65]">
         <span>{label}</span>
-        {icon && <img src={icon} alt={alt || `${label} icon`} className="h-5 w-5 object-contain select-none" draggable="false" />}
+        {icon && <img src={icon} alt={alt || `${label} icon`} className="h-6 w-6 object-contain select-none" draggable="false" />}
       </div>
-      <div className="mt-3 text-4xl font-extrabold text-[#406E65] tabular-nums">{value ?? 0}</div>
-      {unit && <div className="mt-1 text-xs text-[#406E65]">{unit}</div>}
+      <div className="mt-4 text-5xl font-extrabold text-[#406E65] tabular-nums">{value ?? 0}</div>
+      {unit && <div className="mt-2 text-lg text-[#406E65]">{unit}</div>}
     </div>
   )
 
@@ -501,18 +501,18 @@ export default function Records() {
   };
 
   return (
-    <div className="mt-8 flex items-center justify-between flex-wrap gap-2">
-      <h3 className="text-2xl font-extrabold text-[#406E65]">Your Latest Vitals</h3>
+    <div className="mt-8 flex items-center justify-between flex-wrap gap-3">
+      <h3 className="text-3xl font-extrabold text-[#406E65]">Your Latest Vitals</h3>
 
-      <div className="print:hidden flex gap-2">
+      <div className="print:hidden flex gap-3">
 
         {/* Print */}
         <button
           onClick={handlePrintToPOS58}
-          className="inline-flex items-center gap-2 rounded-xl border border-green-400 bg-white px-4 py-2 text-green-700 hover:bg-green-50"
+          className="inline-flex items-center gap-2 rounded-xl border border-green-400 bg-white px-6 py-3 text-lg font-semibold text-green-700 hover:bg-green-50"
         >
-          <img src={printIcon} alt="" className="h-4 w-4 object-contain" />
-          <span className="font-medium">Print</span>
+          <img src={printIcon} alt="" className="h-5 w-5 object-contain" />
+          <span>Print</span>
         </button>
       </div>
     </div>
@@ -585,21 +585,21 @@ export default function Records() {
 
       <button
         onClick={() => setShowLogoutConfirm(true)}
-        className="absolute right-4 top-4 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-[#406E65] shadow hover:bg-slate-50"
+        className="absolute right-4 top-4 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold text-[#406E65] shadow hover:bg-slate-50"
       >
-        <img src={logoutIcon} alt="Logout" className="h-4 w-4 object-contain" />
-        <span className="font-medium">Logout</span>
+        <img src={logoutIcon} alt="Logout" className="h-5 w-5 object-contain" />
+        <span>Logout</span>
       </button>
 
       {/* Patient info */}
       <div className="rounded-2xl border bg-white p-6">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-100 text-emerald-700 font-bold">
+          <div className="grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-700 font-bold text-lg">
             {initialsOf(profile.name)}
           </div>
           <div className="min-w-[16rem]">
-            <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-[#406E65]">{profile.name}</h2>
-            <p className="text-sm text-[#406E65]">
+            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-[#406E65]">{profile.name}</h2>
+            <p className="text-base text-[#406E65]">
               Patient ID: <span className="font-medium">{profile.patientId}</span> •&nbsp;
               Age: <span className="font-medium">{ageDisplay}</span> •&nbsp;
               Contact: <span className="font-medium">{profile.contact}</span>
@@ -612,7 +612,7 @@ export default function Records() {
       <PrintButtonSection />
 
       {/* Latest vitals cards */}
-      <div className="mt-4 grid gap-4 md:grid-cols-3 print:gap-2">
+      <div className="mt-6 grid gap-6 md:grid-cols-3 print:gap-2">
         <Card label="Pulse Rate" icon={heartRateIcon} alt="Pulse rate" value={latest?.heartRate} unit="BPM" />
         <Card label="Temperature" icon={temperatureIcon} alt="Temperature" value={latest?.temperature} unit="°C" />
         <Card label="Oxygen Saturation" icon={spo2Icon} alt="Oxygen saturation" value={latest?.spo2} unit="%" />
@@ -624,23 +624,23 @@ export default function Records() {
 
       {/* Past vitals table */}
       <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-200 bg-white print:hidden">
-        <table className="min-w-full text-left text-sm">
+        <table className="min-w-full text-left text-base">
           <thead className="bg-slate-50 text-[#406E65] font-medium">
             <tr>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Pulse Rate</th>
-              <th className="px-4 py-3">Blood Pressure</th>
-              <th className="px-4 py-3">Temperature</th>
-              <th className="px-4 py-3">SpO₂</th>
-              <th className="px-4 py-3">Height</th>
-              <th className="px-4 py-3">Weight</th>
-              <th className="px-4 py-3">BMI</th>
+              <th className="px-5 py-4">Date</th>
+              <th className="px-5 py-4">Pulse Rate</th>
+              <th className="px-5 py-4">Blood Pressure</th>
+              <th className="px-5 py-4">Temperature</th>
+              <th className="px-5 py-4">SpO₂</th>
+              <th className="px-5 py-4">Height</th>
+              <th className="px-5 py-4">Weight</th>
+              <th className="px-5 py-4">BMI</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-center text-[#406E65]" colSpan={8}>
+                <td className="px-5 py-6 text-center text-[#406E65]" colSpan={8}>
                   No history yet.
                 </td>
               </tr>
@@ -649,9 +649,9 @@ export default function Records() {
                 const bpDisplay = getRowBP(r)
                 return (
                   <tr key={r.id || i} className="border-t border-slate-100 text-[#406E65]">
-                    <td className="px-4 py-3">{r.date ?? '—'}</td>
-                    <td className="px-4 py-3">{r.heart_rate != null ? `${r.heart_rate} bpm` : '—'}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">{r.date ?? '—'}</td>
+                    <td className="px-5 py-4">{r.heart_rate != null ? `${r.heart_rate} bpm` : '—'}</td>
+                    <td className="px-5 py-4">
                       {(() => {
                         const val = rows.length === 1
                           ? (latest?.bloodPressure
@@ -664,13 +664,13 @@ export default function Records() {
 
 
 
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">
                       {typeof r.temperature === 'number' ? `${r.temperature} °C` : (r.temperature ?? '—')}
                     </td>
-                    <td className="px-4 py-3">{typeof r.spo2 === 'number' ? `${r.spo2}%` : (r.spo2 ?? '—')}</td>
-                    <td className="px-4 py-3">{typeof r.height === 'number' ? `${r.height} cm` : (r.height ?? '—')}</td>
-                    <td className="px-4 py-3">{typeof r.weight === 'number' ? `${r.weight} kg` : (r.weight ?? '—')}</td>
-                    <td className="px-4 py-3">{typeof r.bmi === 'number' ? `${r.bmi} kg/m²` : (r.bmi ?? '—')}</td>
+                    <td className="px-5 py-4">{typeof r.spo2 === 'number' ? `${r.spo2}%` : (r.spo2 ?? '—')}</td>
+                    <td className="px-5 py-4">{typeof r.height === 'number' ? `${r.height} cm` : (r.height ?? '—')}</td>
+                    <td className="px-5 py-4">{typeof r.weight === 'number' ? `${r.weight} kg` : (r.weight ?? '—')}</td>
+                    <td className="px-5 py-4">{typeof r.bmi === 'number' ? `${r.bmi} kg/m²` : (r.bmi ?? '—')}</td>
                   </tr>
                 )
               })

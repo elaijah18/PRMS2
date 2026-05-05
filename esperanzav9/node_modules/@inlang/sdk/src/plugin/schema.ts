@@ -43,7 +43,7 @@ export type InlangPlugin<
 	 *
 	 * - `metadata` is optional and can be used to store additional information
 	 *   that is accessible in `importFiles` via `toBeImportedMetadata`. See
-	 *   https://github.com/opral/inlang-sdk/issues/218 for more info.
+	 *   https://github.com/opral/inlang/issues/218 for more info.
 	 *
 	 */
 	toBeImportedFiles?: (args: {
@@ -87,7 +87,7 @@ export type InlangPlugin<
 /**
  * Exposing only a subset to ease mapping of fs functions.
  *
- * https://github.com/opral/inlang-sdk/issues/136
+ * https://github.com/opral/inlang/issues/136
  */
 export type NodeFsPromisesSubsetLegacy = {
 	readFile:

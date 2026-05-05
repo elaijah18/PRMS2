@@ -22,4 +22,11 @@
   .nav-link {
     @apply text-slate-700 hover:text-brand-700 transition-colors;
   }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }

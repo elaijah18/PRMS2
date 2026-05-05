@@ -27,6 +27,10 @@ from django.http import JsonResponse
 import time
 import threading
 from django.db import transaction, close_old_connections
+
+_serial_connection = None
+_serial_lock = threading.RLock()  # <-- Upgraded to RLock (Re-entrant)
+_serial_busy = threading.Event()
 _enrollment_active = threading.Event()
 
 _btn_next_event = threading.Event()
@@ -38,28 +42,176 @@ scan_start_times = {
 SCAN_TIMEOUT = 20
 # Add these near your other locks
 _pending_ui_advance = False
-_ui_advance_lock = threading.Lock()
-SERIAL_PORT = '/dev/ttyUSB1'
+_ui_advance_lock = threading.Lock()                                 
+SERIAL_PORT = '/dev/ttyUSB0'                                                                 
 BAUD_RATE = 115200
-IS_SCANNING = False
+IS_SCANNING = False 
 
-_serial_connection = None
-_serial_lock = threading.RLock()  # <-- Upgraded to RLock (Re-entrant)
 
 _display_connection = None
 _display_lock = threading.RLock() # <-- Upgraded to RLock
-
-# ── Serial ownership ──────────────────────────────────────────────────────────
 _serial_busy = threading.Event()
+_enrollment_active = threading.Event()
+_btn_next_event = threading.Event()
 
 def _claim_serial():
-    """Mark serial port as busy. Call at the start of every sensor session."""
+    """Mark serial port as busy."""
     _serial_busy.set()
 
 def _release_serial():
     """Release serial port."""
     _serial_busy.clear()
+    
+@api_view(['POST'])
+def measure_pulse(request):
+    """
+    Sends PULSE to Arduino to start MAX30100 streaming.
+    Returns immediately — frontend polls /live_pulse/ for live updates,
+    then calls /get_pulse_final/ when the patient is ready.
+    """
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Arduino connection error"}, status=500)
 
+    try:
+        _claim_serial()
+        with _serial_lock:
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            ser.write(b'PULSE\n')
+            ser.flush()
+
+        # Clear stale cached values so live_pulse starts fresh
+        latest_vitals['heart_rate'] = None
+        latest_vitals['spo2']       = None
+
+        return Response({"status": "started", "message": "MAX30100 started."})
+
+    except Exception as e:
+        _release_serial()
+        import traceback
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def live_pulse(request):
+    """
+    Reads Arduino's streaming text logs from the MAX30100.
+    Arduino prints every second: "Heart rate:75bpm / SpO2:98%"
+    Frontend polls this every 1s to show live values.
+    """
+    ser = get_serial()
+    if ser is None:
+        return Response({"status": "waiting", "heart_rate": None, "spo2": None}, status=204)
+
+    try:
+        with _serial_lock:
+            lines_read = 0
+            while ser.in_waiting > 0 and lines_read < 10:
+                raw  = ser.readline()
+                line = raw.decode(errors='ignore').strip()
+                lines_read += 1
+
+                if not line:
+                    continue
+
+                print(f"[live_pulse] Arduino → {repr(line)}")
+
+                # Arduino streams: "Heart rate:75bpm / SpO2:98%"
+                if 'Heart rate:' in line and 'SpO2:' in line:
+                    try:
+                        hr_part   = line.split('Heart rate:')[1].split('bpm')[0].strip()
+                        spo2_part = line.split('SpO2:')[1].split('%')[0].strip()
+
+                        hr   = float(hr_part)
+                        spo2 = float(spo2_part)
+
+                        if hr > 0 and spo2 > 0:
+                            latest_vitals['heart_rate'] = hr
+                            latest_vitals['spo2']       = spo2
+                            return Response({
+                                "heart_rate": hr,
+                                "spo2":       spo2,
+                                "raw":        line,
+                            })
+                    except (ValueError, IndexError) as parse_err:
+                        print(f"[live_pulse] parse error: {parse_err} | line: {repr(line)}")
+                        continue
+
+        # Nothing useful in buffer yet — tell frontend to keep polling
+        return Response({"status": "waiting", "heart_rate": None, "spo2": None}, status=204)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['POST'])
+def get_pulse_final(request):
+    """
+    Sends GET to Arduino → returns final {"heart_rate", "oxygen_saturation"},
+    shuts down MAX30100, and releases the serial claim.
+    """
+    ser = get_serial()
+    if ser is None:
+        return Response({"error": "Arduino connection error"}, status=500)
+
+    try:
+        with _serial_lock:
+            ser.reset_input_buffer()
+            ser.write(b'GET\n')
+            ser.flush()
+
+        deadline = time.time() + 10
+
+        while time.time() < deadline:
+            try:
+                with _serial_lock:
+                    ser.timeout = 2
+                    raw = ser.readline()
+            except Exception:
+                time.sleep(0.1)
+                continue
+
+            line = raw.decode(errors='ignore').strip()
+            if not line:
+                continue
+
+            print(f"[get_pulse_final] Arduino → {repr(line)}")
+
+            if line.startswith('{'):
+                try:
+                    parsed = json.loads(line)
+
+                    if 'error' in parsed:
+                        return Response({"error": parsed['error']}, status=400)
+
+                    hr   = parsed.get('heart_rate')
+                    spo2 = parsed.get('oxygen_saturation')
+
+                    if hr is not None and spo2 is not None:
+                        latest_vitals['heart_rate'] = hr
+                        latest_vitals['spo2']       = spo2
+                        return Response({
+                            "heart_rate":        hr,
+                            "oxygen_saturation": spo2,
+                        })
+
+                except json.JSONDecodeError:
+                    pass
+
+        return Response(
+            {"error": "Timeout — Arduino did not respond to GET within 10s."},
+            status=500,
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+    finally:
+        _release_serial()  # always release after GET, success or timeout
 
 @api_view(['POST'])
 def tare_weight(request):
@@ -81,20 +233,31 @@ def tare_weight(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
     
-def get_serial():
+def get_serial(serial_port=SERIAL_PORT):
     """Get (or re-open) persistent serial connection."""
     global _serial_connection
 
     with _serial_lock:
+        target_port = serial_port or SERIAL_PORT
+
+        if _serial_connection and _serial_connection.is_open:
+            current_port = getattr(_serial_connection, 'port', None)
+            if current_port != target_port:
+                try:
+                    _serial_connection.close()
+                except Exception:
+                    pass
+                _serial_connection = None
+
         if _serial_connection is None or not _serial_connection.is_open:
             try:
                 _serial_connection = serial.Serial(
-                    SERIAL_PORT,
+                    target_port,
                     BAUD_RATE,
                     timeout=1          # 1-second per readline — loop handles total timeout
                 )
                 time.sleep(2)          # wait for Arduino boot / reset
-                print(f"Serial connected to {SERIAL_PORT} @ {BAUD_RATE} baud")
+                print(f"Serial connected to {target_port} @ {BAUD_RATE} baud")
             except Exception as e:
                 print(f"Serial open error: {e}")
                 _serial_connection = None
@@ -198,7 +361,7 @@ def check_fingerprint_match(request):
                         return Response({"status": "scanning", "message": line})
             
             return Response({"status": "scanning", "message": "Waiting..."})
-                
+             
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
@@ -660,7 +823,8 @@ def fetch_spo2(request):
             return Response({"error": "No data available"}, status=404)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-    
+
+               
 
 @api_view(['GET'])
 def fetch_height(request):
@@ -2316,12 +2480,12 @@ def stop_fingerprint_enrollment(request):
 # in your views.py with this block
 
 def _read_single_vital(command: bytes, expected_keys, timeout: int = 15):
+    """Only used for Arduino sensors (weight, height, temp). NOT for pulse."""
     if isinstance(expected_keys, str):
         expected_keys = [expected_keys]
 
     _claim_serial()
-
-    ser = get_serial()
+    ser = get_serial(serial_port=SERIAL_PORT)  # always Arduino, never ESP32
     if ser is None:
         _release_serial()
         return None, "Arduino connection error"
@@ -2399,36 +2563,7 @@ def measure_height(request):
         traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
-
-@api_view(['POST'])
-def measure_pulse(request):
-    """
-    Sends : PULSE
-    Expects: {"heart_rate": X, "spo2": X}  — both keys in ONE JSON line
-
-    Arduino runs all 4 phases (60 s total) then prints one combined JSON.
-    Pulse.jsx calls this single endpoint and reads back both values at once.
-    Timeout is 75 s = 60 s Arduino cycle + 15 s safety margin.
-    """
-    data, err = _read_single_vital(
-        b'PULSE\n',
-        ['heart_rate', 'spo2'],   # wait until both keys arrive together
-        timeout=75
-    )
-    if err:
-        return Response({"error": err}, status=500)
-
-    hr   = data.get('heart_rate', 0)
-    spo2 = data.get('spo2', 0)
-
-    latest_vitals['heart_rate'] = hr
-    latest_vitals['spo2']       = spo2
-
-    # Return both — Pulse.jsx reads: const heartRate = data.heart_rate
-    #                                const oxygenSaturation = data.spo2
-    return Response({"heart_rate": hr, "spo2": spo2})
-
-
+           
 
 # ─────────────────────────────────────────────────────────────────────────────
 # In views.py, DELETE both of these functions:

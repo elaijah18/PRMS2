@@ -15,7 +15,7 @@ export default function Staff() {
 
   const tile =
     "group rounded-3xl bg-[#6ec1af] hover:bg-emerald-800/70 transition-all " +
-    "border border-emerald-500/60 shadow-lg hover:shadow-xl overflow-hidden px-6 py-8 text-white flex flex-col items-center text-center"
+    "border border-emerald-500/60 shadow-lg hover:shadow-xl overflow-hidden px-8 py-10 text-white flex flex-col items-center text-center"
 
   const handleLogout = () => {
     // clear relevant items from localStorage
@@ -35,20 +35,20 @@ export default function Staff() {
         <button
           type="button"
           onClick={() => setShowLogoutConfirm(true)}
-          className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-[#406E65] hover:bg-slate-50 shadow"
+          className="flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg text-[#406E65] hover:bg-slate-50 shadow"
           aria-label="Open logout confirmation"
         >
           <img
             src={logoutIcon}
             alt="Logout icon"
-            className="h-4 w-4 object-contain"
+            className="h-5 w-5 object-contain"
             loading="lazy"
           />
-          <span className="text-sm font-medium">Logout</span>
+          <span className="font-medium">Logout</span>
         </button>
       </div>
 
-      <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-slate-700 bg-clip-text text-transparent text-center">
+      <h2 className="text-5xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-slate-700 bg-clip-text text-transparent text-center">
         Healthcare Personnel&apos;s Dashboard
       </h2>
       <p className="mt-2 text-slate-600 text-center">
@@ -60,33 +60,33 @@ export default function Staff() {
           <img
             src={patientsIcon}
             alt="Patients"
-            className="h-16 w-16 object-contain mb-4"
+            className="h-20 w-20 object-contain mb-5"
             loading="lazy"
           />
-          <h3 className="text-xl font-extrabold">Patients</h3>
-          <p className="mt-1 text-white/85">Search, view, and update records.</p>
+          <h3 className="text-2xl font-extrabold">Patients</h3>
+          <p className="mt-2 text-base text-white/85">Search, view, and update records.</p>
         </Link>
 
         <Link to="/staff/QueueManagement" className={tile} aria-label="Queue Management">
           <img
             src={queueIcon}
             alt="Queue Management"
-            className="h-16 w-16 object-contain mb-4"
+            className="h-20 w-20 object-contain mb-5"
             loading="lazy"
           />
-          <h3 className="text-xl font-extrabold">Queue Management</h3>
-          <p className="mt-1 text-white/85">Supervise the queue's workflow.</p>
+          <h3 className="text-2xl font-extrabold">Queue Management</h3>
+          <p className="mt-2 text-base text-white/85">Supervise the queue's workflow.</p>
         </Link>
 
         <Link to="/staff/reports" className={tile} aria-label="Reports">
           <img
             src={reportsIcon}
             alt="Reports"
-            className="h-16 w-16 object-contain mb-4"
+            className="h-20 w-20 object-contain mb-5"
             loading="lazy"
           />
-          <h3 className="text-xl font-extrabold">Reports</h3>
-          <p className="mt-1 text-white/85">
+          <h3 className="text-2xl font-extrabold">Reports</h3>
+          <p className="mt-2 text-base text-white/85">
             View recent vitals and visit summaries.
           </p>
         </Link>
@@ -99,8 +99,8 @@ export default function Staff() {
           aria-modal="true"
           aria-label="Logout confirmation"
         >
-          <div className="bg-white rounded-xl p-6 w-[90%] max-w-sm text-center shadow-lg">
-            <p className="text-lg font-semibold text-slate-700">
+          <div className="bg-white rounded-xl p-8 w-[90%] max-w-sm text-center shadow-lg">
+            <p className="text-xl font-semibold text-slate-700">
               Are you sure you want to logout?
             </p>
 
@@ -108,7 +108,7 @@ export default function Staff() {
               <button
                 type="button"
                 onClick={() => setShowLogoutConfirm(false)}
-                className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300"
+                className="px-6 py-3 rounded-lg bg-slate-200 text-lg text-slate-700 hover:bg-slate-300"
               >
                 Cancel
               </button>
@@ -119,7 +119,7 @@ export default function Staff() {
                   setShowLogoutConfirm(false)
                   handleLogout()
                 }}
-                className="px-4 py-2 rounded-lg bg-[#6ec1af] text-white hover:bg-emerald-800/70"
+                className="px-6 py-3 rounded-lg bg-[#6ec1af] text-lg text-white hover:bg-emerald-800/70"
               >
                 Logout
               </button>

@@ -214,36 +214,36 @@ export default function VitalSigns() {
   const displayQueueNumber = queue
 
   const Stat = ({ label, value, unit }) => (
-    <div className="rounded-3xl bg-white/90 backdrop-blur border border-[#6ec1af] shadow-[0_8px_24px_rgba(16,185,129,.15)] hover:shadow-[0_12px_28px_rgba(15,23,42,.22)] transition-shadow p-6 flex flex-col items-center text-center">
-      <p className="text-[#406E65] text-sm font-medium">{label}</p>
-      <p className="mt-2 text-4xl font-extrabold text-[#406E65] tabular-nums">{value}</p>
-      {unit && <p className="mt-1 text-[#406E65] font-semibold text-sm">{unit}</p>}
+    <div className="rounded-3xl bg-white/90 backdrop-blur border border-[#6ec1af] shadow-[0_8px_24px_rgba(16,185,129,.15)] hover:shadow-[0_12px_28px_rgba(15,23,42,.22)] transition-shadow p-8 flex flex-col items-center text-center">
+      <p className="text-[#406E65] text-base font-medium">{label}</p>
+      <p className="mt-3 text-5xl font-extrabold text-[#406E65] tabular-nums">{value}</p>
+      {unit && <p className="mt-2 text-[#406E65] font-semibold text-lg">{unit}</p>}
     </div>
   )
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-16">
-      <h2 className="text-3xl md:text-5xl font-extrabold text-center bg-gradient-to-r from-emerald-700 via-teal-600 to-slate-700 bg-clip-text text-transparent leading-tight">
+    <section className="mx-auto max-w-6xl px-4 py-16 flex flex-col items-center">
+      <h2 className="text-4xl md:text-6xl font-extrabold text-center bg-gradient-to-r from-emerald-700 via-teal-600 to-slate-700 bg-clip-text text-transparent leading-tight">
         Vitals Capture Complete!
       </h2>
-      <p className="mt-2 text-center text-slate-700">
+      <p className="mt-3 text-center text-slate-700 text-lg">
         Below are the results of your vitals today.
       </p>
 
       {step === 3 && (
         <>
-          <div className="mt-5 grid gap-5 md:grid-cols-4">
-            <div className="rounded-3xl bg-white/90 backdrop-blur border border-[#6ec1af] shadow-[0_8px_24px_rgba(16,185,129,.15)] hover:shadow-[0_12px_28px_rgba(15,23,42,.22)] transition-shadow p-6 flex flex-col items-center text-center">
-              <p className="text-center text-[#406E65]">Your Queuing Number</p>
-              <div className="mt-2 flex flex-col items-center gap-2">
-                {priority === 'PRIORITY' && parseInt(queue) >= 300 && (
+          <div className="mt-8 grid gap-6 md:grid-cols-4 w-full max-w-5xl mx-auto">
+            <div className="rounded-3xl bg-white/90 backdrop-blur border border-[#6ec1af] shadow-[0_8px_24px_rgba(16,185,129,.15)] hover:shadow-[0_12px_28px_rgba(15,23,42,.22)] transition-shadow p-8 flex flex-col items-center text-center">
+              <p className="text-center text-[#406E65] text-base font-medium">Your Queuing Number</p>
+              <div className="mt-3 flex flex-col items-center gap-2">
+                {priority === 'PRIORITY' && parseInt(queue) <= 299 && (
                   <div className="inline-flex items-center gap-2">
-                    <span className="rounded-md bg-red-600 px-2 py-[2px] text-[10px] font-bold uppercase tracking-wide text-white">
+                    <span className="rounded-md bg-red-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
                       Priority
                     </span>
                   </div>
                 )}
-                <p className="text-center text-5xl text-[#406E65] md:text-6xl font-extrabold tabular-nums">
+                <p className="text-center text-6xl text-[#406E65] md:text-7xl font-extrabold tabular-nums">
                   {queue}
                 </p>
               </div>
@@ -253,25 +253,25 @@ export default function VitalSigns() {
             <Stat label="Blood Pressure" value={results.bp} unit="mmHg" />
           </div>
 
-          <div className="mt-5 grid gap-5 md:grid-cols-4">
+          <div className="mt-8 grid gap-6 md:grid-cols-4 w-full max-w-5xl mx-auto">
             <Stat label="Pulse Rate" value={results.heartRate} unit="bpm" />
             <Stat label="Oxygen Saturation" value={results.spo2} unit="%" />
             <Stat label="Temperature" value={results.temperature} unit="°C" />
             <Stat label="BMI" value={bmi} unit="kg/m²" />
           </div>
 
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
               to="/records"
-              className="rounded-xl bg-[#6ec1af] hover:bg-emerald-800/70 text-white font-semibold px-5 py-3"
+              className="rounded-xl bg-[#6ec1af] hover:bg-emerald-800/70 text-white font-semibold px-8 py-4 text-lg"
             >
               Go to Records
             </Link>
             <button
               onClick={handlePrintToPOS58}
-              className="rounded-xl border border-slate-300 hover:bg-slate-50 px-5 py-3 font-semibold text-[#406E65] inline-flex items-center gap-2"
+              className="rounded-xl border border-slate-300 hover:bg-slate-50 px-8 py-4 text-lg font-semibold text-[#406E65] inline-flex items-center gap-2"
             >
-              <img src={printIcon} alt="" className="h-4 w-4 object-contain" />
+              <img src={printIcon} alt="" className="h-5 w-5 object-contain" />
               <span>Print Results</span>
             </button>
           </div>
@@ -280,45 +280,45 @@ export default function VitalSigns() {
 
       {showPrinting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl p-6 text-center">
-            <p className="text-xl font-bold text-emerald-700">Printing to POS58...</p>
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <p className="text-2xl font-bold text-emerald-700">Printing to POS58...</p>
           </div>
         </div>
       )}
 
       {showFinished && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl p-6 text-center max-w-sm">
-            <p className="text-lg font-semibold text-slate-800">
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center max-w-sm">
+            <p className="text-xl font-semibold text-slate-800">
               Results printed successfully!
             </p>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-3 text-lg text-slate-600">
               Please get your printed results and queuing number from the printer.
             </p>
             <button
               onClick={() => nav('/records')}
-              className="mt-6 rounded-xl bg-[#6ec1af] hover:bg-emerald-800/70 text-white font-semibold px-5 py-2.5"
+              className="mt-6 rounded-xl bg-[#6ec1af] hover:bg-emerald-800/70 text-white font-semibold px-8 py-3 text-lg"
             >
               Finish
             </button>
 
             <div className="mt-6 text-left">
-              <div className="mb-2 text-sm">
+              <div className="mb-3 text-base">
                 <span className="font-semibold">Queue Number:</span>{' '}
-                {parseInt(queue) >= 300 ? (
+                {parseInt(queue) <= 299 ? (
                   <span className="inline-flex items-center gap-2 align-middle">
-                    <span className="rounded-md bg-red-600 px-2 py-[2px] text-[10px] font-bold uppercase tracking-wide text-white">
+                    <span className="rounded-md bg-red-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
                       Priority
                     </span>
-                    <span className="font-mono text-base text-slate-800">• {displayQueueNumber}</span>
+                    <span className="font-mono text-lg text-slate-800">• {displayQueueNumber}</span>
                   </span>
                 ) : (
-                  <span className="font-mono text-base text-slate-800">{displayQueueNumber}</span>
+                  <span className="font-mono text-lg text-slate-800">{displayQueueNumber}</span>
                 )}
               </div>
 
-              {parseInt(queue) >= 300 && priReasons.length > 0 && (
-                <div className="mt-2 text-[11px] text-red-700">
+              {parseInt(queue) <= 299 && priReasons.length > 0 && (
+                <div className="mt-3 text-base text-red-700">
                   <div className="font-semibold uppercase tracking-wide">Triage: Priority</div>
                   <ul className="list-disc pl-5">
                     {priReasons.map((r, i) => <li key={i}>{r}</li>)}

@@ -347,7 +347,7 @@ describe.skip("plugin.diff.file", () => {
 		]);
 	});
 
-	// https://github.com/opral/lix-sdk/issues/33
+	// https://github.com/opral/lix/issues/33
 	test("it should generate changes after the first change", async () => {
 		const project = await loadProjectInMemory({ blob: await newProject() });
 

@@ -1,12 +1,13 @@
+127.0.0.1 - - [29/Apr/2026 08:03:29] code 404, message File not found
+127.0.0.1 - - [29/Apr/2026 08:03:29] "GET /vitals/height HTTP/1.1" 404 -
+127.0.0.1 - - [29/Apr/2026 08:03:52] code 404, message File not found
+127.0.0.1 - - [29/Apr/2026 08:03:52] "GET /vitals/height/ HTTP/1.1" 404 -
+127.0.0.1 - - [29/Apr/2026 08:04:34] code 404, message File not found
+127.0.0.1 - - [29/Apr/2026 08:04:34] "GET /vitals/ HTTP/1.1" 404 -
+127.0.0.1 - - [29/Apr/2026 08:04:42] code 404, message File not found
+127.0.0.1 - - [29/Apr/2026 08:04:42] "GET /vital/ HTTP/1.1" 404 -
 Frontend server started on http://localhost:8080
-Serving files from: C:\Users\christine leanne\Downloads\PRMS2-dp2\PRMS2\esperanzav9\dist/
+Serving files from: /home/pi/Documents/PRMS2/esperanzav9/dist/
 Press Ctrl+C to stop the server
-127.0.0.1 - - [06/Apr/2026 22:09:43] "GET / HTTP/1.1" 200 -
-127.0.0.1 - - [06/Apr/2026 22:09:43] "GET /assets/index-CWdJLrkA.js HTTP/1.1" 304 -
-127.0.0.1 - - [06/Apr/2026 22:09:43] "GET /assets/index-sDezBIkG.css HTTP/1.1" 304 -
-127.0.0.1 - - [06/Apr/2026 22:09:44] "GET /assets/personnel-Br-GDiJw.png HTTP/1.1" 304 -
-127.0.0.1 - - [06/Apr/2026 22:09:44] "GET / HTTP/1.1" 200 -
-127.0.0.1 - - [06/Apr/2026 22:09:44] code 404, message File not found
-127.0.0.1 - - [06/Apr/2026 22:09:44] "GET /favicon.ico HTTP/1.1" 404 -
-127.0.0.1 - - [06/Apr/2026 22:09:44] "GET /assets/background-DCzQtUGr.png HTTP/1.1" 304 -
-^C
+
+Shutting down frontend server...

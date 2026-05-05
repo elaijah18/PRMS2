@@ -155,35 +155,36 @@ export default function Height() {
 
   // ── RENDER ───────────────────────────────────────────────────────────────
   return (
-    <section className="mx-auto max-w-4xl px-4 py-10">
-      {/* Header */}
-      <h2 className="text-3xl md:text-5xl font-extrabold text-center bg-gradient-to-r from-emerald-700 via-teal-600 to-slate-700 bg-clip-text text-transparent leading-normal pb-2">
+    <section className="min-h-screen mx-auto px-4 py-12 flex flex-col items-center justify-center overflow-hidden scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <div className="w-full max-w-2xl">
+        {/* Header */}
+        <h2 className="text-4xl md:text-6xl font-extrabold text-center bg-gradient-to-r from-emerald-700 via-teal-600 to-slate-700 bg-clip-text text-transparent leading-normal pb-2">
         Step 2: Height
       </h2>
-      <p className="mt-3 text-center text-slate-700">
+      <p className="mt-3 text-center text-slate-700 text-lg">
         Stand straight beneath the height sensor until your height is detected.
       </p>
 
-      {/* Image — small, centered, only when idle */}
-      {!ready && !loading && (
-        <div className="mt-4 flex justify-center">
-          <img
-            src={HeightImg}
-            alt="Height procedure"
-            className="h-32 w-auto rounded-xl border border-slate-200 shadow-md object-contain"
-          />
-        </div>
-      )}
+        {/* Image — small, centered, only when idle */}
+        {!ready && !loading && (
+          <div className="mt-4 flex justify-center">
+            <img
+              src={HeightImg}
+              alt="Height procedure"
+              className="h-48 w-auto rounded-xl border border-slate-200 shadow-md object-contain"
+            />
+          </div>
+        )}
 
-      {/* ── Progress bars (visible while loading) ── */}
-      {loading && (
-        <div className="mt-6 mx-auto max-w-md space-y-4">
+        {/* ── Progress bars (visible while loading) ── */}
+        {loading && (
+          <div className="mt-6 mx-auto max-w-md space-y-4">
           {/* Phase stepper */}
           <div className="flex justify-between items-center">
             {PHASES.map((p, i) => (
               <div key={i} className="flex flex-col items-center gap-1 flex-1">
                 <div
-                  className={`w-4 h-4 rounded-full transition-all duration-500 ${
+                  className={`w-6 h-6 rounded-full transition-all duration-500 ${
                     i < phaseIndex
                       ? 'bg-emerald-500'
                       : i === phaseIndex
@@ -191,7 +192,7 @@ export default function Height() {
                       : 'bg-slate-200'
                   }`}
                 />
-                <span className={`text-[10px] text-center leading-tight ${
+                <span className={`text-sm text-center leading-tight ${
                   i === phaseIndex ? 'text-emerald-700 font-semibold' : 'text-slate-400'
                 }`}>
                   {p.label}
@@ -202,11 +203,11 @@ export default function Height() {
 
           {/* Current phase bar */}
           <div>
-            <div className="flex justify-between text-xs text-slate-500 mb-1">
+            <div className="flex justify-between text-sm text-slate-500 mb-1">
               <span className="font-medium text-emerald-700">{phase.label}</span>
               <span>{phaseRemaining}s left</span>
             </div>
-            <div className="h-5 w-full rounded-full bg-slate-100 overflow-hidden">
+            <div className="h-8 w-full rounded-full bg-slate-100 overflow-hidden">
               <div
                 className="h-full rounded-full bg-emerald-400 transition-all duration-1000 ease-linear"
                 style={{ width: `${phasePct}%` }}
@@ -214,45 +215,46 @@ export default function Height() {
             </div>
           </div>
         </div>
-      )}
+        )}
 
-      {/* ── Button ── */}
-      {!ready ? (
-        <div className="mt-8 flex flex-col items-center gap-4">
-          <button
-            onClick={handleStart}
-            disabled={loading}
-            className="rounded-xl bg-[#6ec1af] px-8 py-3.5 text-base font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60 w-56 transition-colors"
-          >
-            {loading ? 'Measuring…' : 'Start'}
-          </button>
-          {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
-        </div>
-      ) : (
-        <div className="mt-8 space-y-6 text-center">
-          <ResultCard label="Height" value={height} unit="cm" />
-          <div className="flex justify-center gap-4">
-            <RetryButton onClick={() => { setHeight(null); setError(''); }} />
+        {/* ── Button ── */}
+        {!ready ? (
+          <div className="mt-8 flex flex-col items-center gap-4">
             <button
-              onClick={handleContinue}
-              disabled={saving}
-              className="rounded-xl bg-[#6ec1af] px-8 py-3.5 text-base font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60 transition-colors"
+              onClick={handleStart}
+              disabled={loading}
+              className="rounded-xl bg-[#6ec1af] px-10 py-5 text-lg font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60 w-64 transition-colors"
             >
-              {saving ? 'Saving…' : 'Continue'}
+              {loading ? 'Measuring…' : 'Start'}
             </button>
+            {error && <p className="text-2xl text-red-600 font-medium">{error}</p>}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="mt-8 space-y-6 text-center">
+            <ResultCard label="Height" value={height} unit="cm" />
+            <div className="flex justify-center gap-4">
+              <RetryButton onClick={() => { setHeight(null); setError(''); }} />
+              <button
+                onClick={handleContinue}
+                disabled={saving}
+                className="rounded-xl bg-[#6ec1af] px-10 py-5 text-lg font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60 transition-colors"
+              >
+                {saving ? 'Saving…' : 'Continue'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── Countdown Modal ── */}
       <SmallModal open={showInit}>
-        <p className="text-xl font-semibold text-slate-800">
+        <p className="text-2xl font-semibold text-slate-800">
           Stand straight and stay still.
         </p>
-        <p className="mt-1 text-slate-600">
+        <p className="mt-1 text-lg text-slate-600">
           Hold steady. Measuring starts in…
         </p>
-        <p className="mt-3 text-5xl font-bold text-emerald-600">
+        <p className="mt-3 text-7xl font-bold text-emerald-600">
           {countdown}
         </p>
       </SmallModal>

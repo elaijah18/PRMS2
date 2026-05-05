@@ -5,10 +5,11 @@ import time
 
 # --- PINS AND CONFIG ---
 DIGIT_PINS = [
-    [17, 27, 22, 10, 9, 11, 0],  # Hundreds
+    [18, 23, 24, 25, 8, 16, 7],  # Hundreds 
     [5, 6, 13, 19, 26, 21, 20],   # Tens
-    [18, 23, 24, 25, 8, 7, 1]     # Ones
+    [17, 27, 22, 10, 9, 11, 12]    # Ones
 ]
+
 BUTTON_PIN = 4 # Physical Pin 7
 
 

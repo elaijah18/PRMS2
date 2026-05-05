@@ -7,6 +7,7 @@ import listIcon from '../assets/list.png'
 import searchIcon from '../assets/search.png'
 import backIcon from '../assets/arrow.png'
 import Popup from '../components/ErrorPopup'
+import Keyboard from '../components/Keyboard'
 
 const API_URL = 'http://localhost:8000'
 
@@ -21,6 +22,7 @@ const calcBmi = (height, weight) => {
 export default function QueueManagement() {
   const nav = useNavigate()
   const [query, setQuery] = useState('')
+  const [showSearchKeyboard, setShowSearchKeyboard] = useState(false)
   const [queue, setQueue] = useState([])
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(0)
@@ -198,6 +200,27 @@ const handleNext = async () => {
   const handleExit = () => nav('/staff')
   const handleRefresh = async () => { await fetchQueue() }
 
+  const onSearchKeyboardPress = (key) => {
+    if (key === 'BACKSPACE') {
+      setQuery((value) => value.slice(0, -1))
+      return
+    }
+
+    if (key === 'SPACE') {
+      setQuery((value) => value + ' ')
+      return
+    }
+
+    if (key === 'ENTER2' || key === 'KEYBOARD') {
+      setShowSearchKeyboard(false)
+      return
+    }
+
+    if (/^[A-Za-z0-9]$/.test(key) || /^[,./?-]$/.test(key)) {
+      setQuery((value) => value + key)
+    }
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return queue
@@ -274,7 +297,7 @@ const handleNext = async () => {
 
       <div ref={tableRef} className="mt-6 rounded-2xl border shadow-sm overflow-hidden bg-white">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-5 pt-5">
-          <div className="text-lg font-extrabold" style={{ color: '#406E65' }}>
+          <div className="text-sm font-extrabold" style={{ color: '#406E65' }}>
             Patient <span className="text-[#406E65]">Queue</span>
           </div>
           <div className="w-full md:w-[26rem]">
@@ -282,6 +305,8 @@ const handleNext = async () => {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setShowSearchKeyboard(true)}
+                onBlur={() => setShowSearchKeyboard(false)}
                 placeholder="Search number, name, patient ID, BP…"
                 className="w-full rounded-full border border-emerald-200/70 bg-emerald-50/40 px-4 py-2.5 pr-10 text-[#406E65] placeholder-emerald-800/60"
               />
@@ -291,6 +316,15 @@ const handleNext = async () => {
             </div>
           </div>
         </div>
+
+        {showSearchKeyboard && (
+          <div
+            className="fixed bottom-4 left-1/2 z-50 w-[95vw] max-w-[42rem] -translate-x-1/2"
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <Keyboard onKeyPress={onSearchKeyboardPress} mode="letters" />
+          </div>
+        )}
 
         <div className="mt-3 overflow-x-auto">
           {loading ? (
@@ -383,7 +417,7 @@ const handleNext = async () => {
             <h3 className="text-3xl font-extrabold tracking-wide text-[#406E65]">
               Now serving queue #{currentServing?.queue_number ?? '—'}
             </h3>
-            <p className="mt-2 text-lg text-slate-600">
+            <p className="mt-2 text-sm text-slate-600">
               {currentServing?.name}
             </p>
             <div className="mt-4">

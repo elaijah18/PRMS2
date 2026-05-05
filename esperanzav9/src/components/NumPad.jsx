@@ -20,12 +20,12 @@ export default function NumPad({ onKeyPress, onKey }){
   }
   
   return (
-    <div className="grid grid-cols-3 gap-2 w-64">
+    <div className="grid grid-cols-3 gap-3 w-[18rem] md:w-[21rem] shrink-0">
       {keys.map((k) => (
         <button key={k} 
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => handleKey(k)}
-          className="rounded-xl text-[#426F66] border border-slate-200 bg-[#DCEBE8] px-4 py-3 text-lg font-semibold shadow-sm hover:shadow transition active:scale-[.98]">
+          className="h-[4.2rem] md:h-[4.8rem] rounded-xl text-[#426F66] border border-slate-200 bg-[#DCEBE8] px-4 text-[30px] font-semibold shadow-sm hover:shadow transition active:scale-[.98] shrink-0">
           {k === '⌫' ? <MdBackspace className="text-xl mx-auto" /> : k}
         </button>
       ))}

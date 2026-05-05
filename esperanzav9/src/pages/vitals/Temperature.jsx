@@ -145,18 +145,19 @@ export default function Temperature() {
   const phasePct       = Math.min((phaseElapsed / phase.duration) * 100, 100);
 
   return (
-    <section className="mx-auto max-w-4xl px-4 py-10">
-      <h2 className="text-3xl md:text-5xl font-extrabold text-center bg-gradient-to-r from-emerald-700 via-teal-600 to-slate-700 bg-clip-text text-transparent leading-normal pb-2">
+    <section className="min-h-screen mx-auto px-4 py-12 flex flex-col items-center justify-center overflow-hidden scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <div className="w-full max-w-2xl">
+      <h2 className="text-4xl md:text-6xl font-extrabold text-center bg-gradient-to-r from-emerald-700 via-teal-600 to-slate-700 bg-clip-text text-transparent leading-normal pb-2">
         Step 4: Temperature
       </h2>
-      <p className="mt-3 text-center text-slate-700">
+      <p className="mt-3 text-center text-slate-700 text-lg">
         Place your fingertip gently on the temperature sensor until the reading stabilizes.
       </p>
 
       {!ready && !loading && (
         <div className="mt-4 flex justify-center">
           <img src={TemperaturePic} alt="Temperature procedure"
-            className="h-32 w-auto rounded-xl border border-slate-200 shadow-md object-contain" />
+            className="h-48 w-auto rounded-xl border border-slate-200 shadow-md object-contain" />
         </div>
       )}
 
@@ -165,23 +166,23 @@ export default function Temperature() {
           <div className="flex justify-between items-center">
             {PHASES.map((p, i) => (
               <div key={i} className="flex flex-col items-center gap-1 flex-1">
-                <div className={`w-4 h-4 rounded-full transition-all duration-500 ${
+                <div className={`w-6 h-6 rounded-full transition-all duration-500 ${
                   i < phaseIndex ? 'bg-emerald-500'
                   : i === phaseIndex ? 'bg-emerald-400 ring-2 ring-offset-2 ring-emerald-400 animate-pulse'
                   : 'bg-slate-200'
                 }`} />
-                <span className={`text-[10px] text-center leading-tight ${
+                <span className={`text-sm text-center leading-tight ${
                   i === phaseIndex ? 'text-emerald-700 font-semibold' : 'text-slate-400'
                 }`}>{p.label}</span>
               </div>
             ))}
           </div>
           <div>
-            <div className="flex justify-between text-xs text-slate-500 mb-1">
+            <div className="flex justify-between text-sm text-slate-500 mb-1">
               <span className="font-medium text-emerald-700">{phase.label}</span>
               <span>{phaseRemaining}s left</span>
             </div>
-            <div className="h-5 w-full rounded-full bg-slate-100 overflow-hidden">
+            <div className="h-8 w-full rounded-full bg-slate-100 overflow-hidden">
               <div className="h-full rounded-full bg-emerald-400 transition-all duration-1000 ease-linear"
                 style={{ width: `${phasePct}%` }} />
             </div>
@@ -192,10 +193,10 @@ export default function Temperature() {
       {!ready ? (
         <div className="mt-8 flex flex-col items-center gap-4">
           <button onClick={handleStart} disabled={isBusy}
-            className="rounded-xl bg-[#6ec1af] px-8 py-3.5 text-base font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60 w-56 transition-colors">
+            className="rounded-xl bg-[#6ec1af] px-10 py-5 text-lg font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60 w-64 transition-colors">
             {loading ? 'Measuring…' : 'Start'}
           </button>
-          {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
+          {error && <p className="text-2xl text-red-600 font-medium">{error}</p>}
         </div>
       ) : (
         <div className="mt-8 space-y-6 text-center">
@@ -210,7 +211,7 @@ export default function Temperature() {
                 nav('/vitals/bp');
               }}
               disabled={isBusy}
-              className="rounded-xl bg-[#6ec1af] px-8 py-3.5 text-base font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60 transition-colors">
+              className="rounded-xl bg-[#6ec1af] px-10 py-5 text-lg font-semibold text-white hover:bg-emerald-800/70 disabled:opacity-60 transition-colors">
               {saving ? 'Saving…' : 'Continue'}
             </button>
           </div>
@@ -218,10 +219,11 @@ export default function Temperature() {
       )}
 
       <SmallModal open={showInit && flowState === 'waiting'}>
-        <p className="text-xl font-semibold text-slate-800">Place the finger in temperature sensor</p>
-        <p className="mt-1 text-slate-600">Hold steady. Measuring starts in…</p>
-        <p className="mt-3 text-5xl font-bold text-emerald-600">{countdown}</p>
+        <p className="text-2xl font-semibold text-slate-800">Place the finger in temperature sensor</p>
+        <p className="mt-1 text-lg text-slate-600">Hold steady. Measuring starts in…</p>
+        <p className="mt-3 text-7xl font-bold text-emerald-600">{countdown}</p>
       </SmallModal>
+      </div>
     </section>
   );
 }

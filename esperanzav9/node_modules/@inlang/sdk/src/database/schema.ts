@@ -77,7 +77,7 @@ type VariantTable = {
 /**
  * A match is a variable reference that is either a literal or a catch-all.
  *
- * https://github.com/opral/inlang-sdk/issues/205
+ * https://github.com/opral/inlang/issues/205
  *
  * @example
  *   match = { type: "match", name: "gender", value: { type: "literal", value: "male"  }}

@@ -165,10 +165,10 @@ export default function Keyboard({ pressedKeys = new Set(), onKeyPress, labels =
   const isPressed = (key) => pressedKeys.has(key);
 
   return (
-    <div className="rounded-[35px] bg-white p-2.5 md:p-1 shadow-inner">
-      <div className="space-y-3">
+    <div className="ms-auto w-full rounded-[35px] bg-white p-3 md:p-4 mon-h-[2in] md:min-h-[4in] shadow-inner">
+      <div className="space-y-3 md:space:space-y-3">
         {rows.map((row, rowIndex) => (
-          <div key={`row-${rowIndex}`} className="flex items-stretch gap-2.5">
+          <div key={`row-${rowIndex}`} className="flex items-stretch gap-2.5 md:gap-3">
             {row.map((key) => {
               const label = resolveLabel(key);
               const special = isSpecialKey(key);
@@ -181,14 +181,12 @@ export default function Keyboard({ pressedKeys = new Set(), onKeyPress, labels =
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => emitKey(key)}
                   className={clsx(
-                    "h-11 md:h-12 min-w-0 rounded-md transition-colors",
-                    "font-medium text-[28px] leading-none",
+                    "h-[0.72in] md:h-[0.95in] min-w-0 rounded-md",
+                    "font-medium text-[30px] md:text-[34px] leading-none",
                     flexSize,
                     (key === "SHIFT1" || key === "SHIFT2") && shiftOn
                       ? "bg-[#426f66] text-white"
-                      : isPressed(key)
-                      ? "bg-[#426f66] text-white"
-                      : "bg-[#dcebe8] text-[#426f66] hover:bg-[#cfe3de]",
+                      : "bg-[#dcebe8] text-[#426f66]",
                     special && "text-sm"
                   )}
                 >

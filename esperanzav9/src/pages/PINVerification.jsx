@@ -103,9 +103,9 @@ export default function PINVerification() {
 
         {/* PIN INPUT */}
         <div className="mt-10 flex justify-center">
-          <div className="card rounded-3xl bg-white shadow-lg p-6 w-80">
+          <div className="card rounded-3xl bg-white shadow-lg p-6 w-full max-w-[21rem] md:max-w-[24rem]">
             {/* PIN Label */}
-            <label className="block text-sm font-medium text-slate-700 mb-4">
+            <label className="block text-sm font-medium text-slate-700 mb-4 text-left">
               4-Digit PIN
             </label>
 
@@ -142,17 +142,19 @@ export default function PINVerification() {
               </button>
             </div>
 
-            <p className="text-xs text-slate-500 mb-6">
+            <p className="mb-6 text-lg text-slate-500 text-center">
               {pin.length === 4
                 ? 'Press Enter or wait for verification.'
                 : 'Enter your 4-digit PIN.'}
             </p>
 
             {/* NumPad */}
-            <NumPad 
-              onKey={onKey}
-              disabled={isVerifying}
-            />
+            <div className="mx-auto w-full max-w-[21rem]">
+              <NumPad
+                onKey={onKey}
+                disabled={isVerifying}
+              />
+            </div>
           </div>
         </div>
 
@@ -161,7 +163,7 @@ export default function PINVerification() {
           <button
             onClick={() => nav('/')}
             className="px-6 py-2 rounded-lg border-[1px] border-[#6ec1af] text-[#4dae9b]/90 
-                       text-sm font-bold hover:bg-emerald-50 transition-colors"
+                       text-lg font-bold hover:bg-emerald-50 transition-colors"
           >
             Back to Home
           </button>

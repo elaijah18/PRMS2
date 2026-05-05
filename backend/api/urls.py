@@ -21,6 +21,7 @@ from .views import (
     check_next_button,
     stop_fingerprint_enrollment,  # ← ADD THIS
     trigger_next_button,          # ← ADD THIS (also missing)
+    get_pulse_final, live_pulse
 )
 
 router = DefaultRouter()
@@ -44,7 +45,7 @@ urlpatterns = [
     path('all-patients/', get_all_patients, name='all_patients'),
     path('receive-vitals/', receive_vital_signs, name='receive_vitals'),
     path('update-vitals/<str:patient_id>', update_vitals, name='update_vitals'),
-    path('api/cancel_vitals/', views.cancel_vitals),
+    path('cancel_vitals/', views.cancel_vitals),
 
     path('test-connection/', test_rpi_connection, name='test_connection'),
     path('archive-patient/<str:patient_id>/', archive_patient_view, name='archive_patient'),
@@ -59,7 +60,8 @@ urlpatterns = [
     path('api/measure_height/',      measure_height),
     path('api/measure_pulse/',       measure_pulse),
     path('api/measure_temperature/', measure_temperature),
-
+    path('get-pulse-final/', views.get_pulse_final, name='get_pulse_final'),
+    path('live_pulse/', views.live_pulse, name='live_pulse'),
 
     # Patient fingerprint endpoints
     path('fingerprint/enroll/', start_fingerprint_enrollment, name='start_fingerprint_enrollment'),

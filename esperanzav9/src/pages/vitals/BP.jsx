@@ -162,14 +162,14 @@ export default function BP() {
             />
           </div>
 
-          <div className="mt-6 flex justify-center">
+          <div className="mt-5 flex justify-center">
             <NumPad onKey={handleNumPadKey} />
           </div>
 
           <div className="mt-8 text-center">
             <button
               onClick={handleSubmit}
-              className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+              className="rounded-xl bg-[#6ec1af] px-8 py-4 text-xl font-semibold text-white hover:bg-emerald-800/70"
             >
               Submit
             </button>
@@ -178,11 +178,11 @@ export default function BP() {
       )}
 
       {value && (
-        <div className="mt-8 space-y-6 text-center">
+        <div className="mt-8 space-y-6 text-center items-center justify-center flex flex-col">
           <ResultCard label="Blood Pressure" value={value} unit="mmHg" />
           <button
             onClick={handleComplete}
-            className="rounded-xl bg-[#6ec1af] px-6 py-3 font-semibold text-white hover:bg-emerald-800/70"
+            className="rounded-xl bg-[#6ec1af] px-8 py-4 text-xl font-semibold text-white hover:bg-emerald-800/70"
           >
             Continue
           </button>

@@ -451,7 +451,7 @@ export default function LoginAuth() {
       {mode === 'pin' && showUsernameKeyboard && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-2 backdrop-blur">
           <div className="mx-auto max-w-5xl">
-            <div className="h-[15rem] w-full overflow-hidden">
+            <div className="h-[27rem] w-full overflow-hidden">
               <Keyboard pressedKeys={pressedKeys} onKeyPress={onKeyboardPress} />
             </div>
           </div>

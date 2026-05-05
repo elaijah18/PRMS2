@@ -5,6 +5,7 @@ import backIcon from '../assets/arrow.png'
 import accIcon from '../assets/account.png'
 import searchIcon from '../assets/search.png'
 import Popup from '../components/ErrorPopup'
+import Keyboard from '../components/Keyboard'
 
 const TEAL = '#406E65'
 const TABLE_BG = '#DCEBE8'
@@ -24,6 +25,7 @@ export default function Reports() {
   const nav = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams() 
   const [query, setQuery] = useState(searchParams.get('q') || '') 
+  const [showSearchKeyboard, setShowSearchKeyboard] = useState(false)
   const [patients, setPatients] = useState([])
   const [loading, setLoading] = useState(true)
   const [popupMsg, setPopupMsg] = useState('');
@@ -50,6 +52,27 @@ export default function Reports() {
   const handleClear = () => {
     setQuery('')
     setSearchParams({})
+  }
+
+  const onSearchKeyboardPress = (key) => {
+    if (key === 'BACKSPACE') {
+      setQuery((value) => value.slice(0, -1))
+      return
+    }
+
+    if (key === 'SPACE') {
+      setQuery((value) => value + ' ')
+      return
+    }
+
+    if (key === 'ENTER2' || key === 'KEYBOARD') {
+      setShowSearchKeyboard(false)
+      return
+    }
+
+    if (/^[A-Za-z0-9]$/.test(key) || /^[,./?-]$/.test(key)) {
+      setQuery((value) => value + key)
+    }
   }
   // End of helper functions
 
@@ -162,6 +185,8 @@ export default function Reports() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                onFocus={() => setShowSearchKeyboard(true)}
+                onBlur={() => setShowSearchKeyboard(false)}
                 placeholder="Search name, ID, address or contact…"
                 className="w-full rounded-full px-4 py-2 outline-none shadow-inner pr-10"
                 style={{
@@ -244,6 +269,14 @@ export default function Reports() {
         </div>
         <div className="h-4" />
       </div>
+      {showSearchKeyboard && (
+        <div
+          className="fixed bottom-4 left-1/2 z-50 w-[95vw] max-w-[42rem] -translate-x-1/2"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <Keyboard onKeyPress={onSearchKeyboardPress} mode="letters" />
+        </div>
+      )}
     {popupMsg && <Popup message={popupMsg} onClose={() => setPopupMsg('')} />}
     </section>
   )

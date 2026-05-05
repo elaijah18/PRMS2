@@ -463,7 +463,7 @@ export default function Register() {
       style={{ backgroundImage: `url(${bgRegister})` }}
     >
       <div className="absolute inset-0 bg-emerald-900/40 backdrop-blur-sm" />
-      <div className={`relative w-full max-w-5xl bg-white rounded-3xl shadow-xl p-6 md:p-10 mx-auto ${(showUsernameKeyboard || showPinNumPad || showPhoneNumPad) ? 'mb-[22rem]' : ''}`}>
+      <div className={`relative w-full max-w-5xl bg-white rounded-3xl shadow-xl p-6 md:p-10 mx-auto ${(showUsernameKeyboard || showPinNumPad || showPhoneNumPad) ? 'mb-[20rem]' : ''}`}>
         <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-emerald-700 mb-8">
           Register
         </h2>
@@ -785,7 +785,7 @@ export default function Register() {
               {showUsernameKeyboard && (
                 <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-2 backdrop-blur">
                   <div className="mx-auto max-w-5xl">
-                    <div className="h-[15rem] w-full overflow-hidden">
+                    <div className="h-[27rem] w-full overflow-hidden">
                       <Keyboard pressedKeys={pressedKeys} onKeyPress={onKeyboardPress} mode={focusedField === 'pin' ? 'pin' : 'letters'} />
                     </div>
                   </div>
@@ -795,7 +795,7 @@ export default function Register() {
               {showPinNumPad && (
                 <div className="fixed inset-x-0 bottom-0 justify-items-center z-20 border-t border-slate-200 bg-white/90 p-2 backdrop-blur">
                   <div className="mx-auto max-w-5xl">
-                    <div className="h-[15rem] w-full overflow-hidden">
+                    <div className="h-[24rem] w-full overflow-hidden">
                       <NumPad onKeyPress={onNumPadPress} />
                     </div>
                   </div>
@@ -805,7 +805,7 @@ export default function Register() {
               {showPhoneNumPad && (
                 <div className="fixed inset-x-0 bottom-0 z-20 justify-items-center border-t border-slate-200 bg-white/90 p-2 backdrop-blur">
                   <div className="mx-auto max-w-5xl">
-                    <div className="h-[15rem] w-full overflow-hidden">
+                    <div className="h-[24rem] w-full overflow-hidden">
                       <NumPad onKeyPress={onPhoneNumPadPress} />
                     </div>
                   </div>
@@ -834,7 +834,7 @@ export default function Register() {
           {/* Biometric Status Card */}
           <aside className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6 flex flex-col">
             <h3 className="text-lg font-extrabold text-emerald-800">Biometric Enrollment</h3>
-            <p className="mt-1 text-sm text-emerald-900/80">
+            <p className="mt-1 text-lg text-emerald-900/80">
               Fingerprint enrollment required
             </p>
           
