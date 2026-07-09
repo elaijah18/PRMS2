@@ -585,14 +585,14 @@ export default function Records() {
 
       <button
         onClick={() => setShowLogoutConfirm(true)}
-        className="absolute right-4 top-4 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold text-[#406E65] shadow hover:bg-slate-50"
+        className="absolute right-4 top-4 flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold text-[#406E65] shadow hover:bg-slate-50"
       >
         <img src={logoutIcon} alt="Logout" className="h-5 w-5 object-contain" />
         <span>Logout</span>
       </button>
 
       {/* Patient info */}
-      <div className="rounded-2xl border bg-white p-6">
+      <div className="mt-10 rounded-2xl border bg-white p-6">
         <div className="flex flex-wrap items-center gap-4">
           <div className="grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-700 font-bold text-lg">
             {initialsOf(profile.name)}

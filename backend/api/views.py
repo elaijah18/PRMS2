@@ -37,7 +37,7 @@ _btn_next_event = threading.Event()
 
 scan_start_times = {
     "patient": None,
-    "staff": None
+    "staff": None 
 }
 SCAN_TIMEOUT = 20
 # Add these near your other locks
@@ -61,27 +61,33 @@ def _claim_serial():
 def _release_serial():
     """Release serial port."""
     _serial_busy.clear()
-    
+
 @api_view(['POST'])
 def measure_pulse(request):
-    """
-    Sends PULSE to Arduino to start MAX30100 streaming.
-    Returns immediately — frontend polls /live_pulse/ for live updates,
-    then calls /get_pulse_final/ when the patient is ready.
-    """
     ser = get_serial()
     if ser is None:
         return Response({"error": "Arduino connection error"}, status=500)
 
     try:
-        _claim_serial()
+        # Force-release any stale claim from a previous session
+        _release_serial()
+
         with _serial_lock:
             ser.reset_input_buffer()
             ser.reset_output_buffer()
+            ser.write(b'FLUSH\n')   # tell Arduino to abort anything in progress
+            ser.flush()
+
+        time.sleep(0.5)             # give Arduino time to reset
+
+        with _serial_lock:
+            ser.reset_input_buffer()
             ser.write(b'PULSE\n')
             ser.flush()
 
-        # Clear stale cached values so live_pulse starts fresh
+        _claim_serial()             # claim AFTER sending, not before
+
+        # Clear stale cached values
         latest_vitals['heart_rate'] = None
         latest_vitals['spo2']       = None
 
@@ -93,14 +99,8 @@ def measure_pulse(request):
         traceback.print_exc()
         return Response({"error": str(e)}, status=500)
 
-
 @api_view(['GET'])
 def live_pulse(request):
-    """
-    Reads Arduino's streaming text logs from the MAX30100.
-    Arduino prints every second: "Heart rate:75bpm / SpO2:98%"
-    Frontend polls this every 1s to show live values.
-    """
     ser = get_serial()
     if ser is None:
         return Response({"status": "waiting", "heart_rate": None, "spo2": None}, status=204)
@@ -116,9 +116,8 @@ def live_pulse(request):
                 if not line:
                     continue
 
-                print(f"[live_pulse] Arduino → {repr(line)}")
+                print(f"[live_pulse] RAW from Arduino: {repr(line)}")  # ? shows exact bytes
 
-                # Arduino streams: "Heart rate:75bpm / SpO2:98%"
                 if 'Heart rate:' in line and 'SpO2:' in line:
                     try:
                         hr_part   = line.split('Heart rate:')[1].split('bpm')[0].strip()
@@ -139,11 +138,15 @@ def live_pulse(request):
                         print(f"[live_pulse] parse error: {parse_err} | line: {repr(line)}")
                         continue
 
-        # Nothing useful in buffer yet — tell frontend to keep polling
+                # ? Catch anything else Arduino sends (JSON errors, debug, etc.)
+                else:
+                    print(f"[live_pulse] unrecognized line: {repr(line)}")
+
         return Response({"status": "waiting", "heart_rate": None, "spo2": None}, status=204)
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+                
 
 
 @api_view(['POST'])

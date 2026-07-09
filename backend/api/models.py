@@ -44,7 +44,7 @@ class Patient(models.Model):
     sex = models.CharField(max_length=6, choices=[('Male', 'Male'), ('Female', 'Female')])
     contact = models.CharField(max_length=11, default='N/A')
     street = models.CharField(max_length=50, null=True, blank=True)
-    barangay = models.CharField(max_length=3, null=True, blank=True)
+    barangay = models.CharField(max_length=20, null=True, blank=True)
     username = models.CharField(max_length=20, null=True, blank=True, unique=True)
     birthdate = models.DateField(null=True, blank=True)
     pin = models.CharField(max_length=255)

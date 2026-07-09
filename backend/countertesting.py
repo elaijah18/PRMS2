@@ -37,7 +37,7 @@ try:
     while True:
         update_leds(counter)
         print(f"Count: {counter}")
-        time.sleep(1)       # ? change speed here (seconds per count)
+        time.sleep(0.02)       # ? change speed here (seconds per count)
         counter += 1
         if counter > 999:
             counter = 0     # loop back to 000

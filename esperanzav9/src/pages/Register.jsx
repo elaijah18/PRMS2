@@ -687,10 +687,10 @@ export default function Register() {
                         required
                       >
                         <option value="">Select Brgy.</option>
-                        <option value="1">Brgy. 587</option>
-                        <option value="1-A">Brgy. 587-A</option>
+                        <option value="Brgy. 587">Brgy. 587</option>
+                        <option value="Brgy. 587-A">Brgy. 587-A</option>
                         {Array.from({ length: 62 }, (_, i) => 588 + i).map(brgy => (
-                          <option key={brgy} value={brgy - 586}>
+                          <option key={brgy} value={`Brgy. ${brgy}`}>
                             Brgy. {brgy}
                           </option>
                         ))}

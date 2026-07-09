@@ -697,7 +697,7 @@ export default function StaffRegister() {
               {showUsernameKeyboard && (
                 <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-2 backdrop-blur">
                   <div className="mx-auto max-w-5xl">
-                    <div className="h-[15rem] w-full overflow-hidden">
+                    <div className="h-[27rem] w-full overflow-hidden">
                       <Keyboard pressedKeys={pressedKeys} onKeyPress={onKeyboardPress} mode="letters" />
                     </div>
                   </div>
@@ -707,7 +707,7 @@ export default function StaffRegister() {
               {showPinNumPad && (
                 <div className="fixed inset-x-0 bottom-0 justify-items-center z-20 border-t border-slate-200 bg-white/90 p-2 backdrop-blur">
                   <div className="mx-auto max-w-5xl">
-                    <div className="h-[15rem] w-full overflow-hidden">
+                    <div className="h-[24rem] w-full overflow-hidden">
                       <NumPad onKeyPress={onNumPadPress} />
                     </div>
                   </div>
@@ -717,7 +717,7 @@ export default function StaffRegister() {
               {showPhoneNumPad && (
                 <div className="fixed inset-x-0 bottom-0 z-20 justify-items-center border-t border-slate-200 bg-white/90 p-2 backdrop-blur">
                   <div className="mx-auto max-w-5xl">
-                    <div className="h-[15rem] w-full overflow-hidden">
+                    <div className="h-[24rem] w-full overflow-hidden">
                       <NumPad onKeyPress={onPhoneNumPadPress} />
                     </div>
                   </div>
